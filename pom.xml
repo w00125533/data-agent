@@ -78,6 +78,13 @@
             </exclusions>
         </dependency>
 
+        <!-- Hadoop shaded runtime (provides relocated Woodstox for HiveConf XML parsing) -->
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-client-runtime</artifactId>
+            <version>3.3.6</version>
+        </dependency>
+
         <!-- ZooKeeper (pin version + exclude conflicting SLF4J bindings) -->
         <dependency>
             <groupId>org.apache.zookeeper</groupId>

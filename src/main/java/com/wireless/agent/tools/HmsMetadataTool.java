@@ -11,12 +11,13 @@ import java.util.stream.Collectors;
  *  Falls back to MockMetadataTool when HMS is unreachable. */
 public class HmsMetadataTool implements Tool {
 
-    private final String hmsUri;
+    private final HiveConf conf;
     private final MockMetadataTool fallback;
-    private HiveMetaStoreClient client;
 
     public HmsMetadataTool(String hmsUri) {
-        this.hmsUri = hmsUri;
+        this.conf = new HiveConf();
+        conf.set("hive.metastore.uris", hmsUri);
+        conf.set("hive.metastore.client.capability.check", "false");
         this.fallback = new MockMetadataTool();
     }
 
@@ -37,24 +38,20 @@ public class HmsMetadataTool implements Tool {
             return ToolResult.fail("No search term provided");
         }
 
-        // Try real HMS client
         var result = tryHmsLookup(search);
         if (result != null) return result;
 
-        // Fallback to mock
         return fallback.lookup(search);
     }
 
     private ToolResult tryHmsLookup(String search) {
-        try {
-            var c = getClient();
-            // Parse catalog.schema.table or schema.table
+        try (var client = new HiveMetaStoreClient(conf)) {
             var parts = search.split("\\.");
             if (parts.length >= 2) {
-                var dbName = parts[parts.length - 2];  // e.g., "dw"
-                var tblName = parts[parts.length - 1]; // e.g., "mr_5g_15min"
-                var table = c.getTable(dbName, tblName);
-                var fields = c.getFields(dbName, tblName);
+                var dbName = parts[parts.length - 2];
+                var tblName = parts[parts.length - 1];
+                var table = client.getTable(dbName, tblName);
+                var fields = client.getFields(dbName, tblName);
 
                 var schema = fields.stream()
                         .map(f -> Map.of(
@@ -76,21 +73,14 @@ public class HmsMetadataTool implements Tool {
                     Map.of("type", "schema_lookup", "source", search,
                            "findings", Map.of("found", true, "via", "hms")));
             }
-        } catch (Throwable e) {
-            // HMS unreachable or table not found — fall through to fallback
-            client = null;  // Reset failed client
+        } catch (NoClassDefFoundError | NoSuchMethodError e) {
+            // HMS jars not available — fall through to fallback
+        } catch (org.apache.thrift.TException e) {
+            // HMS connection failure (MetaException extends TException) — fall through to fallback
+        } catch (Exception e) {
+            // Other unexpected exceptions — fall through to fallback
         }
         return null;
-    }
-
-    private HiveMetaStoreClient getClient() throws Exception {
-        if (client != null) return client;
-
-        var conf = new HiveConf();
-        conf.set("hive.metastore.uris", hmsUri);
-        conf.set("hive.metastore.client.capability.check", "false");
-        client = new HiveMetaStoreClient(conf);
-        return client;
     }
 
     /** Direct search with keyword matching against known tables via fallback. */
