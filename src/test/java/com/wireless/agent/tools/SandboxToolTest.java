@@ -38,14 +38,14 @@ class SandboxToolTest {
         var sql = "SELECT * FROM dw.mr_5g_15min WHERE rsrp_avg < -110;";
         var result = SandboxTool.ensureLimit(sql, 100);
         assertThat(result).contains("LIMIT 100");
+        assertThat(result).contains("_preview");
     }
 
     @Test
-    void shouldNotDoubleAppendLimit() {
+    void shouldWrapSqlWithSubqueryLimit() {
         var sql = "SELECT * FROM t LIMIT 50;";
         var result = SandboxTool.ensureLimit(sql, 100);
-        assertThat(result.toUpperCase()).contains("LIMIT 50");
-        assertThat(result.toUpperCase()).doesNotContain("LIMIT 100");
+        assertThat(result).contains("SELECT * FROM (SELECT * FROM t LIMIT 50) _preview LIMIT 100");
     }
 
     @Test

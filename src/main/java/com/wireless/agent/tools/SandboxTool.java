@@ -9,9 +9,7 @@ import java.util.regex.Pattern;
 public class SandboxTool implements Tool {
 
     private static final Pattern SQL_BLOCK = Pattern.compile(
-            "```sql\\s*\\n?(.*?)```", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-    private static final Pattern HAS_LIMIT = Pattern.compile(
-            "\\bLIMIT\\s+\\d+", Pattern.CASE_INSENSITIVE);
+            "```(?:sql|sparksql)\\s*\\n?(.*?)```", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
 
     private final DockerCommandRunner runner;
     private final String sparkContainer;
@@ -34,6 +32,8 @@ public class SandboxTool implements Tool {
 
     /** Execute dry-run: extract SQL, add LIMIT if needed, submit to Spark, return preview. */
     public Map<String, Object> dryRun(String rawCode, Spec spec) {
+        Objects.requireNonNull(rawCode, "rawCode must not be null");
+        Objects.requireNonNull(spec, "spec must not be null");
         var sql = extractSql(rawCode);
         if (sql.isEmpty()) {
             return Map.of(
@@ -59,13 +59,13 @@ public class SandboxTool implements Tool {
             }
             return Map.of(
                 "next_action", "sandbox_failed",
-                "error", result.stderr(),
-                "preview", result.stdout()
+                "error", Objects.toString(result.stderr(), ""),
+                "preview", Objects.toString(result.stdout(), "")
             );
         } catch (Exception e) {
             return Map.of(
                 "next_action", "sandbox_failed",
-                "error", e.getMessage(),
+                "error", Objects.toString(e.getMessage(), ""),
                 "preview", ""
             );
         }
@@ -81,14 +81,11 @@ public class SandboxTool implements Tool {
     }
 
     public static String ensureLimit(String sql, int limit) {
-        if (HAS_LIMIT.matcher(sql).find()) {
-            return sql;
-        }
         var trimmed = sql.trim();
         if (trimmed.endsWith(";")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1);
+            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
         }
-        return trimmed + " LIMIT " + limit + ";";
+        return "SELECT * FROM (" + trimmed + ") _preview LIMIT " + limit + ";";
     }
 
     private String specSummaryBrief(Spec spec) {
