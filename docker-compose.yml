@@ -199,6 +199,7 @@ services:
   flink-taskmanager:
     image: ${FLINK_IMAGE}
     container_name: da-flink-taskmanager
+    hostname: flink-taskmanager
     restart: unless-stopped
     command: taskmanager
     environment:
@@ -207,6 +208,7 @@ services:
         jobmanager.rpc.address: flink-jobmanager
     volumes:
       - ./docker/flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
+      - ./docker/hive/hive-site.xml:/opt/flink/conf/hive-site.xml:ro
     networks:
       - data-agent-net
     depends_on:
