@@ -244,3 +244,20 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
+
+  starrocks:
+    image: ${STARROCKS_IMAGE}
+    container_name: da-starrocks
+    hostname: starrocks
+    restart: unless-stopped
+    ports:
+      - "${STARROCKS_QUERY_PORT}:9030"
+      - "${STARROCKS_HTTP_PORT}:8030"
+    networks:
+      - data-agent-net
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h127.0.0.1 -P9030 -uroot -e 'SHOW DATABASES;' >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
