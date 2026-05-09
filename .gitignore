@@ -12,3 +12,6 @@ build/
 dist/
 *.log
 .worktrees/
+# Local stack
+volumes/
+*.bak
