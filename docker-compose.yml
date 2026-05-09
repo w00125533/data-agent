@@ -182,6 +182,8 @@ services:
     volumes:
       - ./docker/flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
       - ./docker/hive/hive-site.xml:/opt/flink/conf/hive-site.xml:ro
+      - ./docker/hadoop/core-site.xml:/opt/flink/conf/core-site.xml:ro
+      - ./docker/hadoop/hdfs-site.xml:/opt/flink/conf/hdfs-site.xml:ro
     ports:
       - "${FLINK_JOBMANAGER_PORT}:8081"
     networks:
@@ -209,6 +211,8 @@ services:
     volumes:
       - ./docker/flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
       - ./docker/hive/hive-site.xml:/opt/flink/conf/hive-site.xml:ro
+      - ./docker/hadoop/core-site.xml:/opt/flink/conf/core-site.xml:ro
+      - ./docker/hadoop/hdfs-site.xml:/opt/flink/conf/hdfs-site.xml:ro
     networks:
       - data-agent-net
     depends_on:
