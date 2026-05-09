@@ -1,5 +1,7 @@
 # Data Agent — 无线网络感知评估
 
+**前置需求:** Docker + Docker Compose v2
+
 ## 快速开始
 
 ```bash
