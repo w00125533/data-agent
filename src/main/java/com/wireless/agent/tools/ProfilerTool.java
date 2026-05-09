@@ -30,7 +30,10 @@ public class ProfilerTool implements Tool {
         }
         var results = new LinkedHashMap<String, Object>();
         for (var src : spec.sources()) {
-            var tbl = src.binding().getOrDefault("table_or_topic", "").toString();
+            var binding = src.binding();
+            if (binding == null) continue;
+            var tblObj = binding.get("table_or_topic");
+            var tbl = tblObj != null ? tblObj.toString() : "";
             if (!tbl.isEmpty()) {
                 var profile = profileTable(tbl, 5);
                 results.put(tbl, profile.data());
@@ -49,16 +52,19 @@ public class ProfilerTool implements Tool {
 
             var mockFallback = new MockMetadataTool();
             var schemaResult = mockFallback.lookup(tableName);
-            if (schemaResult.success()) {
-                @SuppressWarnings("unchecked")
-                var data = (Map<String, Object>) schemaResult.data();
-                @SuppressWarnings("unchecked")
-                var schema = (List<Map<String, String>>) data.get("schema");
-                for (var col : schema) {
-                    var colName = col.get("name");
-                    var nullCount = runSparkSql(buildNullCheckQuery(tableName, colName));
-                    stats.put(colName + "_null_rate",
-                            String.format("%.2f%%", 100.0 * parseCount(nullCount) / Math.max(1, parseCount(rowCount))));
+            if (schemaResult.success() && schemaResult.data() instanceof Map<?, ?> data) {
+                var schemaObj = data.get("schema");
+                if (schemaObj instanceof List<?> list) {
+                    for (var item : list) {
+                        if (item instanceof Map<?, ?> col) {
+                            var colName = col.get("name");
+                            if (colName != null) {
+                                var nullCount = runSparkSql(buildNullCheckQuery(tableName, colName.toString()));
+                                stats.put(colName + "_null_rate",
+                                        String.format("%.2f%%", 100.0 * parseCount(nullCount) / Math.max(1, parseCount(rowCount))));
+                            }
+                        }
+                    }
                 }
             }
             return ToolResult.ok(stats);
@@ -69,19 +75,19 @@ public class ProfilerTool implements Tool {
     }
 
     static String buildProfileQuery(String table, List<String> columns, int topK) {
-        var cols = columns.isEmpty() ? "*" : String.join(", ", columns);
+        var cols = columns.isEmpty() ? "*" : columns.stream().map(c -> "`" + c + "`").collect(Collectors.joining(", "));
         return String.format(
-                "SELECT COUNT(*) AS cnt FROM %s; " +
-                "SELECT %s FROM %s LIMIT %d;",
+                "SELECT COUNT(*) AS cnt FROM `%s`; " +
+                "SELECT %s FROM `%s` LIMIT %d;",
                 table, cols, table, topK);
     }
 
     static String buildRowCountQuery(String table) {
-        return String.format("SELECT COUNT(*) FROM %s;", table);
+        return String.format("SELECT COUNT(*) FROM `%s`;", table);
     }
 
     static String buildNullCheckQuery(String table, String column) {
-        return String.format("SELECT COUNT(*) FROM %s WHERE %s IS NULL;", table, column);
+        return String.format("SELECT COUNT(*) FROM `%s` WHERE `%s` IS NULL;", table, column);
     }
 
     static Map<String, String> parseCountResult(String stdout) {
@@ -115,6 +121,6 @@ public class ProfilerTool implements Tool {
         if (result.isSuccess()) {
             return result.stdout();
         }
-        return result.stderr();
+        throw new RuntimeException("Spark SQL failed: " + result.stderr());
     }
 }
