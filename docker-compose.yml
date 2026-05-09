@@ -168,3 +168,47 @@ services:
     depends_on:
       spark-master:
         condition: service_healthy
+
+  flink-jobmanager:
+    image: ${FLINK_IMAGE}
+    container_name: da-flink-jobmanager
+    hostname: flink-jobmanager
+    restart: unless-stopped
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+    volumes:
+      - ./docker/flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
+      - ./docker/hive/hive-site.xml:/opt/flink/conf/hive-site.xml:ro
+    ports:
+      - "${FLINK_JOBMANAGER_PORT}:8081"
+    networks:
+      - data-agent-net
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/overview || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  flink-taskmanager:
+    image: ${FLINK_IMAGE}
+    container_name: da-flink-taskmanager
+    restart: unless-stopped
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+    volumes:
+      - ./docker/flink/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
+    networks:
+      - data-agent-net
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy

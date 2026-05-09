@@ -1,0 +1,12 @@
+jobmanager.rpc.address: flink-jobmanager
+jobmanager.rpc.port: 6123
+jobmanager.memory.process.size: 1600m
+taskmanager.memory.process.size: 1728m
+taskmanager.numberOfTaskSlots: 2
+parallelism.default: 1
+rest.port: 8081
+rest.address: 0.0.0.0
+rest.bind-address: 0.0.0.0
+state.backend: hashmap
+execution.checkpointing.interval: 60000
+execution.checkpointing.mode: EXACTLY_ONCE
