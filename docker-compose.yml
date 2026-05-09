@@ -28,3 +28,63 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  hdfs-namenode:
+    image: ${HADOOP_IMAGE}
+    container_name: da-hdfs-namenode
+    hostname: hdfs-namenode
+    user: root
+    environment:
+      HADOOP_HOME: /opt/hadoop
+    command:
+      - bash
+      - -c
+      - |
+        if [ ! -f /hadoop/dfs/name/current/VERSION ]; then
+          $$HADOOP_HOME/bin/hdfs namenode -format -nonInteractive -force
+        fi
+        $$HADOOP_HOME/bin/hdfs namenode
+    restart: unless-stopped
+    volumes:
+      - hdfs-name:/hadoop/dfs/name
+      - ./docker/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./docker/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+    ports:
+      - "${HDFS_NAMENODE_PORT}:9870"
+      - "${HDFS_NAMENODE_RPC_PORT}:8020"
+    networks:
+      - data-agent-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9870 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  hdfs-datanode:
+    image: ${HADOOP_IMAGE}
+    container_name: da-hdfs-datanode
+    hostname: hdfs-datanode
+    user: root
+    environment:
+      HADOOP_HOME: /opt/hadoop
+    command:
+      - bash
+      - -c
+      - $$HADOOP_HOME/bin/hdfs datanode
+    restart: unless-stopped
+    volumes:
+      - hdfs-data:/hadoop/dfs/data
+      - ./docker/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./docker/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+    networks:
+      - data-agent-net
+    depends_on:
+      hdfs-namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9864 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
