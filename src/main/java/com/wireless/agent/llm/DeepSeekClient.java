@@ -63,10 +63,20 @@ public record DeepSeekClient(String apiBase, String apiKey, String model) {
                 }
                 var respBody = MAPPER.readValue(response.body().string(), Map.class);
                 var choices = (List<Map<String, Object>>) respBody.get("choices");
+                if (choices == null || choices.isEmpty()) {
+                    return "[ERROR] Empty choices in response: " + respBody;
+                }
                 var message = (Map<String, String>) choices.get(0).get("message");
-                return message.get("content");
+                if (message == null) {
+                    return "[ERROR] Missing message in response: " + choices.get(0);
+                }
+                var content = message.get("content");
+                if (content == null) {
+                    return "[ERROR] Missing content in response: " + message;
+                }
+                return content;
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             return "[ERROR] " + e.getMessage();
         }
     }

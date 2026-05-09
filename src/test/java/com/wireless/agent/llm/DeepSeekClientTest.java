@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -58,12 +60,18 @@ class DeepSeekClientTest {
                 .body(ResponseBody.create(respJson, MediaType.parse("application/json")))
                 .build();
 
-        when(httpClient.newCall(any())).thenReturn(call);
+        var captor = ArgumentCaptor.forClass(Request.class);
+        when(httpClient.newCall(captor.capture())).thenReturn(call);
         when(call.execute()).thenReturn(response);
 
         var messages = List.of(Map.of("role", "user", "content", "PING"));
         var result = client.chat(httpClient, messages);
         assertThat(result).isEqualTo("PONG");
+
+        // Verify the request was built correctly
+        Request captured = captor.getValue();
+        assertThat(captured.url().toString()).isEqualTo("https://api.deepseek.com/v1/chat/completions");
+        assertThat(captured.header("Authorization")).isEqualTo("Bearer sk-test");
     }
 
     @Test
