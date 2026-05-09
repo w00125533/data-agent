@@ -113,7 +113,7 @@ services:
       hdfs-namenode:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "ss -tlnp | grep -q ':9083' || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9083' 2>/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
