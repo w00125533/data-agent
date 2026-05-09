@@ -14,3 +14,10 @@ dist/
 .env
 volumes/
 *.bak
+
+# Java / Maven
+*target/
+*.class
+*.jar
+*.war
+dependency-reduced-pom.xml
