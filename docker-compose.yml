@@ -88,3 +88,33 @@ services:
       timeout: 5s
       retries: 15
       start_period: 30s
+
+  hive-metastore:
+    image: ${HIVE_IMAGE}
+    container_name: da-hive-metastore
+    hostname: hive-metastore
+    user: root
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+    command: ["bash", "/opt/hive/entrypoint.sh"]
+    restart: unless-stopped
+    volumes:
+      - ./docker/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
+      - ./docker/hive/entrypoint.sh:/opt/hive/entrypoint.sh:ro
+      - ./docker/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+    ports:
+      - "${HMS_PORT}:9083"
+    networks:
+      - data-agent-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hdfs-namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ss -tlnp | grep -q ':9083' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
