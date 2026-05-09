@@ -1,0 +1,6 @@
+cell_id,site_id,district,longitude,latitude,rat,azimuth,downtilt
+C001,S001,海淀,116.30,39.98,5G_SA,30,5
+C002,S001,海淀,116.30,39.98,5G_SA,150,5
+C003,S002,朝阳,116.45,39.92,5G_SA,0,4
+C004,S003,西城,116.36,39.91,5G_NSA,90,6
+C005,S004,东城,116.41,39.92,5G_SA,180,5

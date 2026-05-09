@@ -1,0 +1,5 @@
+{"ts":"2026-05-01T00:00:01","event_type":"handover","src_cell":"C001","dst_cell":"C003","result":"success","cause":"normal"}
+{"ts":"2026-05-01T00:00:05","event_type":"handover","src_cell":"C001","dst_cell":"C002","result":"failure","cause":"too_late"}
+{"ts":"2026-05-01T00:00:08","event_type":"handover","src_cell":"C003","dst_cell":"C004","result":"success","cause":"normal"}
+{"ts":"2026-05-01T00:00:12","event_type":"handover","src_cell":"C002","dst_cell":"C001","result":"failure","cause":"too_early"}
+{"ts":"2026-05-01T00:00:15","event_type":"handover","src_cell":"C005","dst_cell":"C003","result":"success","cause":"normal"}
