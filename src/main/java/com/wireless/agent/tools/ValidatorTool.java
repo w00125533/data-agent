@@ -13,6 +13,10 @@ public class ValidatorTool implements Tool {
             "```sql\\s*\\n?(.*?)```", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
     private static final Pattern TABLE_REF = Pattern.compile(
             "\\b(?:FROM|JOIN)\\s+([a-zA-Z_][a-zA-Z0-9_.]*)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern COMMA_TABLE = Pattern.compile(
+            ",\\s*([a-zA-Z_][a-zA-Z0-9_.]*)");
+    private static final Pattern CTE_NAME = Pattern.compile(
+            "\\bWITH\\s+(\\w+)\\s+AS\\s*\\(", Pattern.CASE_INSENSITIVE);
 
     @Override
     public String name() { return "validator"; }
@@ -26,6 +30,9 @@ public class ValidatorTool implements Tool {
     }
 
     public ToolResult validate(String rawCode, Spec spec) {
+        java.util.Objects.requireNonNull(rawCode, "rawCode must not be null");
+        java.util.Objects.requireNonNull(spec, "spec must not be null");
+
         var warnings = new ArrayList<String>();
 
         // 1. Extract SQL from markdown code block
@@ -43,13 +50,28 @@ public class ValidatorTool implements Tool {
             warnings.add("SQL has no FROM clause — may not reference any table");
         }
 
-        // 3. Check table references against spec sources
+        // 3. Collect CTE names to avoid false warnings
+        var cteNames = new HashSet<String>();
+        var cteMatcher = CTE_NAME.matcher(sql);
+        while (cteMatcher.find()) {
+            cteNames.add(cteMatcher.group(1).toLowerCase());
+        }
+
+        // 4. Extract table references from FROM/JOIN clauses
         var referencedTables = new ArrayList<String>();
         var tableMatcher = TABLE_REF.matcher(sql);
         while (tableMatcher.find()) {
-            referencedTables.add(tableMatcher.group(1).toLowerCase());
+            var tableName = tableMatcher.group(1).toLowerCase();
+            referencedTables.add(tableName);
+            // Also check for comma-separated tables after this match
+            var afterFrom = sql.substring(tableMatcher.end());
+            var commaMatcher = COMMA_TABLE.matcher(afterFrom);
+            while (commaMatcher.find()) {
+                referencedTables.add(commaMatcher.group(1).toLowerCase());
+            }
         }
 
+        // 5. Check table references against spec sources
         var knownTables = new ArrayList<String>();
         for (var src : spec.sources()) {
             var tbl = src.binding().getOrDefault("table_or_topic", "").toString();
@@ -57,13 +79,17 @@ public class ValidatorTool implements Tool {
         }
 
         for (var ref : referencedTables) {
-            var found = knownTables.stream().anyMatch(t -> ref.contains(t) || t.contains(ref));
+            // Skip CTE names
+            if (cteNames.contains(ref)) continue;
+
+            var found = knownTables.stream().anyMatch(t ->
+                t.equals(ref) || ref.endsWith("." + t) || t.endsWith("." + ref));
             if (!found) {
                 warnings.add("Table " + ref + " not in spec sources: " + knownTables);
             }
         }
 
-        // 4. Basic syntax checks
+        // 6. Basic syntax checks
         if (!sql.toUpperCase().contains("SELECT")) {
             warnings.add("SQL has no SELECT clause");
         }
