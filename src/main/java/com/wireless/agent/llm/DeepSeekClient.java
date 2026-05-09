@@ -6,12 +6,23 @@ import okhttp3.*;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-public record DeepSeekClient(String apiBase, String apiKey, String model) {
+public class DeepSeekClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
+
+    private final String apiBase;
+    private final String apiKey;
+    private final String model;
+
+    public DeepSeekClient(String apiBase, String apiKey, String model) {
+        this.apiBase = apiBase;
+        this.apiKey = apiKey;
+        this.model = model;
+    }
 
     public DeepSeekClient() {
         this(
@@ -20,6 +31,10 @@ public record DeepSeekClient(String apiBase, String apiKey, String model) {
             System.getenv().getOrDefault("DEEPSEEK_MODEL", "deepseek-chat")
         );
     }
+
+    public String apiBase() { return apiBase; }
+    public String apiKey() { return apiKey; }
+    public String model() { return model; }
 
     /** Create a default OkHttpClient (used in production path). */
     public static OkHttpClient defaultHttpClient() {
@@ -79,5 +94,24 @@ public record DeepSeekClient(String apiBase, String apiKey, String model) {
         } catch (Exception e) {
             return "[ERROR] " + e.getMessage();
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof DeepSeekClient that)) return false;
+        return Objects.equals(apiBase, that.apiBase)
+                && Objects.equals(apiKey, that.apiKey)
+                && Objects.equals(model, that.model);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(apiBase, apiKey, model);
+    }
+
+    @Override
+    public String toString() {
+        return "DeepSeekClient[apiBase=" + apiBase + ", apiKey=" + apiKey + ", model=" + model + "]";
     }
 }

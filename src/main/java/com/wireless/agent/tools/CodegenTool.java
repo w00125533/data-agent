@@ -55,12 +55,11 @@ public class CodegenTool implements Tool {
                     Map.of("role", "user", "content", prompt)
                 );
                 code = llmClient.chat(messages);
+                if (code.startsWith("[ERROR]")) {
+                    code = hardcodedSparkSql(spec);
+                }
             } else {
                 code = hardcodedSparkSql(spec);
-            }
-
-            if (code.startsWith("[ERROR]")) {
-                return ToolResult.fail(code, Map.of("code", ""));
             }
             return ToolResult.ok(Map.of(
                 "code", code,
