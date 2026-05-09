@@ -37,20 +37,40 @@ public class DockerCommandRunner {
         var cmd = buildCommand(container, args);
         try {
             var pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(false);
             var process = pb.start();
 
-            var stdout = readStream(new BufferedReader(new InputStreamReader(process.getInputStream())));
-            var stderr = readStream(new BufferedReader(new InputStreamReader(process.getErrorStream())));
+            // Read stdout and stderr concurrently to prevent deadlock
+            var stdoutFuture = java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> readStreamSafely(process.getInputStream()));
+            var stderrFuture = java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> readStreamSafely(process.getErrorStream()));
 
             var finished = process.waitFor(timeoutSec, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                return new Result(-1, stdout, stderr, true);
+                return new Result(-1,
+                        stdoutFuture.getNow(""),
+                        stderrFuture.getNow(""),
+                        true);
             }
-            return new Result(process.exitValue(), stdout, stderr, false);
+            return new Result(process.exitValue(),
+                    stdoutFuture.get(),
+                    stderrFuture.get(),
+                    false);
+        } catch (java.util.concurrent.ExecutionException e) {
+            return new Result(-1, "", "Stream read error: " + e.getCause().getMessage(), false);
+        } catch (java.io.IOException e) {
+            return new Result(-1, "", "System error (docker not found?): " + e.getMessage(), false);
         } catch (Exception e) {
             return new Result(-1, "", e.getMessage(), false);
+        }
+    }
+
+    private String readStreamSafely(java.io.InputStream stream) {
+        try {
+            return readStream(new BufferedReader(new InputStreamReader(stream)));
+        } catch (Exception e) {
+            return "Error reading stream: " + e.getMessage();
         }
     }
 

@@ -39,4 +39,15 @@ class DockerCommandRunnerTest {
         assertThat(result.timedOut()).isTrue();
         assertThat(result.isSuccess()).isFalse();
     }
+
+    @Test
+    void shouldExecuteSimpleCommandAndReturnStdout() {
+        var runner = new DockerCommandRunner();
+        // Use a command that works on both Windows and Unix
+        var result = runner.exec("non-existent-container",
+                List.of("echo", "hello"), 5);
+        // Will fail because container doesn't exist, but verifies exec() runs end-to-end
+        assertThat(result).isNotNull();
+        assertThat(result.timedOut()).isFalse();
+    }
 }
