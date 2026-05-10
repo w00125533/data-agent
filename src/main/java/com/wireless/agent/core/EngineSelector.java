@@ -9,11 +9,27 @@ public final class EngineSelector {
     private EngineSelector() {}
 
     private static final Spec.EngineDecision FALLBACK =
-            new Spec.EngineDecision("spark_sql", "无法自动判定,默认 Spark SQL(人工确认)");
+            new Spec.EngineDecision("spark_sql", "无法自动判定,默认 Spark SQL (需人工确认)");
 
     record Rule(String recommended, String reasoning, Predicate<Spec> condition) {}
 
     private static final List<Rule> RULES = List.of(
+        new Rule("java_flink_streamapi",
+            "反向合成数据生产任务,需编程控制数据分布 → Java Flink Stream API",
+            spec -> spec.taskDirection() == Spec.TaskDirection.REVERSE_SYNTHETIC
+                    && spec.sources().stream().anyMatch(s -> {
+                        var cat = s.binding().get("catalog");
+                        return "kafka".equals(cat);
+                    })),
+        new Rule("java_flink_streamapi",
+            "任务含复杂状态/递归/外部服务调用,SQL无法表达 → Java Flink Stream API",
+            spec -> {
+                var def = spec.target() != null ? spec.target().businessDefinition() : "";
+                var lower = def.toLowerCase();
+                return lower.contains("复杂状态") || lower.contains("状态机")
+                    || lower.contains("递归") || lower.contains("外部服务")
+                    || lower.contains("自定义算子") || lower.contains("custom operator");
+            }),
         new Rule("flink_sql",
             "源含 Kafka/CDC 流式数据,需时间窗口或流式语义 → Flink SQL",
             spec -> spec.sources().stream().anyMatch(s -> {

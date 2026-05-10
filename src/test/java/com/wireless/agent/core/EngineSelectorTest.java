@@ -47,4 +47,40 @@ class EngineSelectorTest {
         var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
         assertThat(EngineSelector.select(spec).recommended()).isEqualTo("spark_sql");
     }
+
+    @Test
+    void shouldRecommendFlinkSqlForKafkaPlusTimeWindow() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.target(new Spec.TargetSpec().name("test").timeliness("streaming"));
+        spec.sources(List.of(new Spec.SourceBinding().role("stream")
+                .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))));
+        assertThat(EngineSelector.select(spec).recommended()).isEqualTo("flink_sql");
+    }
+
+    @Test
+    void shouldRecommendJavaFlinkStreamApiForComplexState() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.target(new Spec.TargetSpec().name("stateful_test").businessDefinition("需要复杂状态机处理"));
+        spec.sources(List.of(new Spec.SourceBinding().role("stream")
+                .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))));
+        assertThat(EngineSelector.select(spec).recommended()).isEqualTo("java_flink_streamapi");
+    }
+
+    @Test
+    void shouldStillRecommendFlinkSqlForSimpleStreamTask() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.target(new Spec.TargetSpec().name("simple_agg").businessDefinition("切换失败次数统计"));
+        spec.sources(List.of(new Spec.SourceBinding().role("stream")
+                .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))));
+        assertThat(EngineSelector.select(spec).recommended()).isEqualTo("flink_sql");
+    }
+
+    @Test
+    void shouldRecommendJavaFlinkForReverseSyntheticTask() {
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.target(new Spec.TargetSpec().name("synth_data").businessDefinition("生成模拟信令数据"));
+        spec.sources(List.of(new Spec.SourceBinding().role("stream")
+                .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))));
+        assertThat(EngineSelector.select(spec).recommended()).isEqualTo("java_flink_streamapi");
+    }
 }
