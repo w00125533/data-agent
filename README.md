@@ -80,3 +80,30 @@ mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo --n
 # With DeepSeek API
 mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo"
 ```
+
+## M2 -- Domain Knowledge Base + Sample Baseline
+
+**Domain Knowledge Base:** 内置无线评估方法论字典，包含 5 大 KPI 族 (coverage/mobility/accessibility/retainability/qoe) 的定义、计算公式、阈值、关联源表和 join 模式。
+
+```bash
+# KB 目前为 classpath JSON 资源，启动时自动加载
+# 可通过 MetadataTool.searchKb() API 以编程方式查询
+```
+
+**Sample Baseline Service:** 为源表创建 1% 采样快照，存储到 HDFS `/baseline/` 路径，ProfilerTool 和 SandboxTool 优先使用基线数据。
+
+```bash
+# 为当前 spec 的源表创建基线 (需要 Docker 栈运行)
+# 基线自动在 ProfilerTool.run() 和 SandboxTool.dryRun() 中优先生效
+```
+
+**KB 查询示例:**
+
+| 查询方式 | 说明 |
+|----------|------|
+| `kb.search("弱覆盖")` | 全文搜索: 匹配名称/别名/关键词/定义 |
+| `kb.lookupByKpiFamily("coverage")` | 按 KPI 族查询 |
+| `kb.lookupByCategory("methodology")` | 按类别查询(方法论/术语/join模式) |
+| `metadataTool.searchKb("RSRP")` | 通过 MetadataTool 间接查询 |
+
+**AgentCore LLM prompt now includes KB context** -- the system prompt is augmented with relevant domain methodology definitions based on the current KPI family detected from the user's input.
