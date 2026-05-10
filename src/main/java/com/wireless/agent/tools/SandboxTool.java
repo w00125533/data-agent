@@ -103,7 +103,10 @@ public class SandboxTool implements Tool {
             var tbl = src.binding().getOrDefault("table_or_topic", "").toString();
             if (!tbl.isEmpty() && baselineService.hasBaseline(tbl)) {
                 var baselineTbl = baselineService.resolveTable(tbl);
-                rewritten = rewritten.replace(tbl, baselineTbl);
+                // Use word-boundary-aware regex to avoid partial matches
+                rewritten = rewritten.replaceAll(
+                        "(?<![\\w.])" + java.util.regex.Pattern.quote(tbl) + "(?![\\w.])",
+                        java.util.regex.Matcher.quoteReplacement(baselineTbl));
             }
         }
         return rewritten;

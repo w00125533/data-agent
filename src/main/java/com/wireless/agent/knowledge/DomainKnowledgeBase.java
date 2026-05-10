@@ -106,8 +106,8 @@ public class DomainKnowledgeBase {
                 ? this.entries
                 : lookupByKpiFamily(kpiFamily);
         if (entries.isEmpty()) {
-            System.err.println("[WARN] KB: no entries for kpi_family=" + kpiFamily + ", showing all entries");
-            entries = this.entries;
+            System.err.println("[WARN] KB: no entries for kpi_family=" + kpiFamily);
+            return "";
         }
 
         var sb = new StringBuilder();
