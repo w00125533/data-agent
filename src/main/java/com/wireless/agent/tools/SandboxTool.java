@@ -13,15 +13,29 @@ public class SandboxTool implements Tool {
 
     private final DockerCommandRunner runner;
     private final String sparkContainer;
+    private final String flinkContainer;
     private final BaselineService baselineService;
 
+    public String sparkContainer() { return sparkContainer; }
+    public String flinkContainer() { return flinkContainer; }
+
     public SandboxTool(DockerCommandRunner runner, String sparkContainer) {
-        this(runner, sparkContainer, null);
+        this(runner, sparkContainer, "da-flink-jobmanager", null);
+    }
+
+    public SandboxTool(DockerCommandRunner runner, String sparkContainer, String flinkContainer) {
+        this(runner, sparkContainer, flinkContainer, null);
     }
 
     public SandboxTool(DockerCommandRunner runner, String sparkContainer, BaselineService baselineService) {
+        this(runner, sparkContainer, "da-flink-jobmanager", baselineService);
+    }
+
+    public SandboxTool(DockerCommandRunner runner, String sparkContainer,
+                       String flinkContainer, BaselineService baselineService) {
         this.runner = runner;
         this.sparkContainer = sparkContainer;
+        this.flinkContainer = flinkContainer;
         this.baselineService = baselineService;
     }
 
@@ -53,8 +67,9 @@ public class SandboxTool implements Tool {
         sql = rewriteForBaseline(sql, spec);
 
         try {
-            var result = runner.exec(sparkContainer,
-                    List.of("spark-sql", "--master", "spark://spark-master:7077", "-e", sql));
+            var targetContainer = selectContainer(spec);
+            var execCmd = buildExecutionCommand(targetContainer, sql);
+            var result = runner.exec(targetContainer, execCmd);
             if (result.isSuccess()) {
                 var preview = truncate(result.stdout(), 2000);
                 return Map.of(
@@ -76,6 +91,28 @@ public class SandboxTool implements Tool {
                 "preview", ""
             );
         }
+    }
+
+    /** Select the target container based on engine decision. */
+    public String selectContainer(Spec spec) {
+        var engine = spec.engineDecision();
+        if (engine == null) return sparkContainer;
+        return switch (engine.recommended()) {
+            case "flink_sql" -> flinkContainer;
+            case "java_flink_streamapi" -> flinkContainer;
+            default -> sparkContainer;
+        };
+    }
+
+    /** Build the execution command for a given container. */
+    public List<String> buildExecutionCommand(String container, String sql) {
+        if (container.equals(flinkContainer)) {
+            // Flink SQL Client
+            return List.of("bash", "-c",
+                    "echo '" + sql.replace("'", "'\\''") + "' | /opt/flink/bin/sql-client.sh");
+        }
+        // Spark SQL
+        return List.of("spark-sql", "--master", "spark://spark-master:7077", "-e", sql);
     }
 
     public static String extractSql(String rawCode) {

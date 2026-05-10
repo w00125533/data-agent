@@ -100,4 +100,44 @@ class SandboxToolTest {
         var rewritten = tool.rewriteForBaseline(sql, spec);
         assertThat(rewritten).isEqualTo(sql); // No rewrite
     }
+
+    @Test
+    void shouldSelectSparkContainerForSparkSql() {
+        var runner = new DockerCommandRunner();
+        var sandbox = new SandboxTool(runner, "da-spark-master", "da-flink-jobmanager");
+        assertThat(sandbox.sparkContainer()).isEqualTo("da-spark-master");
+        assertThat(sandbox.flinkContainer()).isEqualTo("da-flink-jobmanager");
+    }
+
+    @Test
+    void shouldSelectFlinkContainerForFlinkSql() {
+        var runner = new DockerCommandRunner();
+        var sandbox = new SandboxTool(runner, "da-spark-master", "da-flink-jobmanager");
+
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.engineDecision(new Spec.EngineDecision("flink_sql", "流式"));
+
+        var container = sandbox.selectContainer(spec);
+        assertThat(container).isEqualTo("da-flink-jobmanager");
+    }
+
+    @Test
+    void shouldDefaultToSparkForUnknownEngine() {
+        var runner = new DockerCommandRunner();
+        var sandbox = new SandboxTool(runner, "da-spark-master", "da-flink-jobmanager");
+
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        // No engine decision → default to spark
+        var container = sandbox.selectContainer(spec);
+        assertThat(container).isEqualTo("da-spark-master");
+    }
+
+    @Test
+    void shouldUseFlinkSqlClientForFlinkSqlExecution() {
+        var runner = new DockerCommandRunner();
+        var sandbox = new SandboxTool(runner, "da-spark-master", "da-flink-jobmanager");
+        var cmd = sandbox.buildExecutionCommand("da-flink-jobmanager", "SELECT 1;");
+        // Flink uses sql-client.sh, Spark uses spark-sql
+        assertThat(cmd).anyMatch(s -> s.contains("sql-client.sh"));
+    }
 }
