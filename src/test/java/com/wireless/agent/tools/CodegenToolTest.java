@@ -171,4 +171,68 @@ class CodegenToolTest {
         assertThat(code).contains("java_flink_streamapi");
         assertThat(code).contains("FlinkDataStream");
     }
+
+    @Test
+    void shouldGenerateReverseSyntheticPrompt() {
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.originalPipeline("""
+                INSERT INTO handover_kpi
+                SELECT cell_id, COUNT(*) AS failure_count
+                FROM signaling_events
+                WHERE event_type = 'handover' AND result = 'failure'
+                GROUP BY cell_id;""");
+        spec.target(new Spec.TargetSpec()
+                .name("handover_kpi_data_gen")
+                .businessDefinition("生成切换失败 KPI 测试数据")
+                .grain("(cell_id, hour)"));
+        spec.sources(List.of(
+                new Spec.SourceBinding()
+                        .role("stream")
+                        .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))
+        ));
+        spec.engineDecision(new Spec.EngineDecision("java_flink_streamapi",
+                "反向合成数据生产 → Java Flink Stream API"));
+
+        var prompt = CodegenTool.buildCodegenPrompt(spec);
+        assertThat(prompt).contains("REVERSE_SYNTHETIC");
+        assertThat(prompt).contains("数据生产");
+        assertThat(prompt).contains("signaling_events");
+        assertThat(prompt).contains("handover");
+    }
+
+    @Test
+    void shouldFallbackToReverseSyntheticCodeWhenNoLlm() {
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.originalPipeline("INSERT INTO handover_kpi SELECT cell_id, COUNT(*) FROM signaling_events WHERE event_type='handover' GROUP BY cell_id;");
+        spec.target(new Spec.TargetSpec()
+                .name("handover_data_gen")
+                .businessDefinition("生成切换失败测试数据"));
+        spec.sources(List.of(
+                new Spec.SourceBinding()
+                        .role("stream")
+                        .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))
+        ));
+        spec.engineDecision(new Spec.EngineDecision("java_flink_streamapi",
+                "反向合成 → Java"));
+
+        var tool = new CodegenTool(null);
+        var result = tool.run(spec);
+        assertThat(result.success()).isTrue();
+        var code = result.data().toString();
+        assertThat(code).contains("DataGenerator");
+        assertThat(code).contains("synthetic");
+    }
+
+    @Test
+    void shouldSelectReversePromptWhenTaskDirectionIsReverse() {
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.engineDecision(new Spec.EngineDecision("flink_sql", "反向合成 Flink SQL"));
+        spec.target(new Spec.TargetSpec().name("test"));
+        spec.sources(List.of(
+                new Spec.SourceBinding().role("s").binding(Map.of("table_or_topic", "t"))
+        ));
+        // Even with flink_sql engine, REVERSE_SYNTHETIC direction should trigger reverse prompt
+        var prompt = CodegenTool.buildCodegenPrompt(spec);
+        assertThat(prompt).contains("REVERSE_SYNTHETIC");
+    }
 }

@@ -58,6 +58,20 @@ public class CodegenTool implements Tool {
             8. Wrap the final code in a ```java code block.
             """;
 
+    public static final String REVERSE_SYNTHETIC_SYSTEM_PROMPT = """
+            You are a synthetic data generator for wireless network perception testing.
+
+            Rules:
+            1. Output ONLY the data generation code, no explanation before or after.
+            2. Generate code that produces synthetic data matching the input schema constraints.
+            3. For Flink SQL: use INSERT INTO with cross-joined value lists (UNION ALL).
+            4. For Java Flink: use DataStream<String> with random value generation, KeyedProcessFunction for stateful patterns.
+            5. Include configurable data scale: NUM_ROWS constant at the top.
+            6. Include configurable anomaly ratio: ANOMALY_RATIO constant controlling edge-case injection.
+            7. Match the column types and semantics extracted from the original pipeline.
+            8. Wrap the final code in ```sql or ```java code block matching the target engine.
+            """;
+
     private final DeepSeekClient llmClient;
 
     public CodegenTool(DeepSeekClient llmClient) {
@@ -100,6 +114,9 @@ public class CodegenTool implements Tool {
     }
 
     public static String buildCodegenPrompt(Spec spec) {
+        if (spec.taskDirection() == Spec.TaskDirection.REVERSE_SYNTHETIC) {
+            return buildReverseCodegenPrompt(spec);
+        }
         var target = spec.target();
         var engine = spec.engineDecision();
         var schemaLines = new ArrayList<String>();
@@ -160,6 +177,58 @@ public class CodegenTool implements Tool {
         }
     }
 
+    private static String buildReverseCodegenPrompt(Spec spec) {
+        var target = spec.target();
+        var engine = spec.engineDecision();
+        var pipelineCode = spec.originalPipeline() != null ? spec.originalPipeline() : "(no pipeline code provided)";
+
+        var schemaLines = new ArrayList<String>();
+        for (var src : spec.sources()) {
+            var tbl = src.binding().getOrDefault("table_or_topic", "unknown").toString();
+            schemaLines.add("- " + src.role() + ": " + tbl);
+            if (src.schema_() != null) {
+                for (var col : src.schema_()) {
+                    schemaLines.add("    " + col.get("name") + " (" + col.get("type")
+                            + "): " + col.getOrDefault("semantic", ""));
+                }
+            }
+        }
+        var schemaBlock = schemaLines.isEmpty()
+                ? "(infer from pipeline code)"
+                : String.join("\n", schemaLines);
+
+        return String.format("""
+                Generate DATA PRODUCTION code (REVERSE_SYNTHETIC) for wireless network test data:
+
+                Original pipeline that needs test data:
+                ```
+                %s
+                ```
+
+                Target test dataset: %s
+                Purpose: %s
+                Input schema (data to produce):
+                %s
+
+                Engine: %s (rationale: %s)
+
+                Requirements:
+                - Generate INSERT/SOURCE code that populates test data matching the input schema
+                - Default data scale: 10,000 rows (configurable via NUM_ROWS constant)
+                - Default anomaly ratio: 5%% (configurable via ANOMALY_RATIO constant)
+                - Column values should be realistic wireless network data (cell_id, timestamps, signal metrics)
+                - Output grain: %s
+                """,
+                pipelineCode,
+                target != null ? target.name() : "(unspecified)",
+                target != null ? target.businessDefinition() : "test data generation",
+                schemaBlock,
+                engine != null ? engine.recommended() : "java_flink_streamapi",
+                engine != null ? engine.reasoning() : "反向合成默认 Java Flink",
+                target != null ? target.grain() : "cell × hour"
+        );
+    }
+
     /** Fallback hardcoded SQL for the 2 demo M0b scenarios. */
     static String hardcodedSparkSql(Spec spec) {
         var target = spec.target();
@@ -194,6 +263,9 @@ public class CodegenTool implements Tool {
     }
 
     private static String selectSystemPrompt(Spec spec) {
+        if (spec.taskDirection() == Spec.TaskDirection.REVERSE_SYNTHETIC) {
+            return REVERSE_SYNTHETIC_SYSTEM_PROMPT;
+        }
         var engine = spec.engineDecision();
         if (engine == null) return CODGEN_SYSTEM_PROMPT;
         return switch (engine.recommended()) {
@@ -214,6 +286,9 @@ public class CodegenTool implements Tool {
 
     /** Fallback hardcoded code for all engines when LLM is unavailable. */
     static String hardcodedCode(Spec spec) {
+        if (spec.taskDirection() == Spec.TaskDirection.REVERSE_SYNTHETIC) {
+            return hardcodedReverseSynthetic(spec);
+        }
         var engine = spec.engineDecision();
         if (engine == null) return hardcodedSparkSql(spec);
         return switch (engine.recommended()) {
@@ -329,5 +404,72 @@ public class CodegenTool implements Tool {
                 }
                 ```""",
                 target != null ? target.name() : "FlinkDataStream");
+    }
+
+    /** Fallback hardcoded data generation code for reverse synthetic tasks. */
+    static String hardcodedReverseSynthetic(Spec spec) {
+        var target = spec.target();
+        var def = target != null ? target.businessDefinition() : "";
+        var pipeline = spec.originalPipeline() != null ? spec.originalPipeline() : "";
+
+        if (!pipeline.isEmpty() && (pipeline.contains("handover") || pipeline.contains("切换")
+                || def.contains("切换") || def.contains("handover"))) {
+            return """
+                    ```java
+                    // 切换事件测试数据生成器 (Java Flink Stream API)
+                    import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+                    import org.apache.flink.streaming.api.datastream.DataStream;
+                    import java.util.Random;
+
+                    public class HandoverDataGenerator {
+                        private static final int NUM_ROWS = 10_000;
+                        private static final double ANOMALY_RATIO = 0.05;
+                        private static final String[] CELL_IDS = {"cell_A", "cell_B", "cell_C", "cell_D"};
+                        private static final Random RNG = new Random(42);
+
+                        public static void main(String[] args) throws Exception {
+                            StreamExecutionEnvironment env =
+                                StreamExecutionEnvironment.getExecutionEnvironment();
+
+                            DataStream<String> synthetic = env
+                                .fromSequence(0, NUM_ROWS - 1)
+                                .map(i -> {
+                                    String cellId = CELL_IDS[RNG.nextInt(CELL_IDS.length)];
+                                    String eventType = RNG.nextDouble() < ANOMALY_RATIO
+                                        ? "handover" : "other";
+                                    String result = RNG.nextDouble() < 0.1 ? "failure" : "success";
+                                    long ts = System.currentTimeMillis() - RNG.nextInt(3600_000);
+                                    return String.format("%%s|%%s|%%s|%%d", cellId, eventType, result, ts);
+                                });
+
+                            synthetic.print();
+                            env.execute("Handover Data Generator");
+                        }
+                    }
+                    ```""";
+        }
+        return String.format("""
+                ```java
+                // %%s — 反向合成数据生成 (Java Flink Stream API)
+                import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+                import org.apache.flink.streaming.api.datastream.DataStream;
+                import java.util.Random;
+
+                public class SyntheticDataGenerator {
+                    private static final int NUM_ROWS = 10_000;
+                    private static final double ANOMALY_RATIO = 0.05;
+
+                    public static void main(String[] args) throws Exception {
+                        StreamExecutionEnvironment env =
+                            StreamExecutionEnvironment.getExecutionEnvironment();
+                        DataStream<String> synthetic = env
+                            .fromSequence(0, NUM_ROWS - 1)
+                            .map(i -> String.format("synthetic_event_%%d", i));
+                        synthetic.print();
+                        env.execute("Synthetic Data Generator");
+                    }
+                }
+                ```""",
+                target != null ? target.name() : "SyntheticDataGenerator");
     }
 }
