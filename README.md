@@ -54,3 +54,29 @@ java -cp target/data-agent-0.1.0.jar com.wireless.agent.Main --demo --no-llm
 | `DEEPSEEK_API_BASE` | API 地址 | (必填) |
 | `DEEPSEEK_API_KEY` | API Key | (必填) |
 | `DEEPSEEK_MODEL` | 模型名 | `deepseek-chat` |
+
+## M1 — Real Tools Integration
+
+**New tools:**
+
+| Tool | Description | Connection |
+|------|-------------|------------|
+| HmsMetadataTool | Real HMS table schema lookup | Hive Metastore Thrift (default `thrift://hive-metastore:9083`), auto-fallback to mock when HMS unreachable |
+| ProfilerTool | Data profiling (row count, null rate, distribution) | Docker exec spark-sql on spark-master |
+| ValidatorTool | SQL syntax/schema validation | Pure Java: extracts SQL block, checks table references, reports warnings |
+| SandboxTool | Spark SQL dry-run preview | Docker exec spark-sql on spark-master, LIMIT 100 preview |
+
+**AgentCore pipeline:** Metadata → Profiler → EngineSelector → Codegen → Validator → Sandbox
+
+**Configuration:** `src/main/resources/agent.properties` with environment variable override
+
+```bash
+# Start Docker stack + load sample data
+bash scripts/up.sh && bash scripts/load-sample-data.sh
+
+# Run M1 demo (dry-run on real Spark)
+mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo --no-llm"
+
+# With DeepSeek API
+mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo"
+```
