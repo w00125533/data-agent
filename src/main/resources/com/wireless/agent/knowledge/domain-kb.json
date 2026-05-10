@@ -1,0 +1,222 @@
+[
+  {
+    "id": "kpi-001",
+    "category": "kpi_definition",
+    "kpi_family": "coverage",
+    "name": "弱覆盖小区",
+    "aliases": ["弱覆盖", "poor coverage", "weak coverage", "弱覆盖比例"],
+    "definition": "在指定时间窗口内，RSRP < -110 dBm 的采样点占比超过 30% 的小区",
+    "formula": "weak_cov_ratio = COUNT(rsrp_avg < -110) / COUNT(*) * 100",
+    "threshold": "weak_cov_ratio > 30%",
+    "related_tables": ["dw.mr_5g_15min", "dw.mr_4g_15min"],
+    "keywords": ["RSRP", "弱覆盖", "-110", "覆盖"]
+  },
+  {
+    "id": "kpi-002",
+    "category": "kpi_definition",
+    "kpi_family": "coverage",
+    "name": "深度覆盖差小区",
+    "aliases": ["深度覆盖", "deep coverage", "deep poor coverage"],
+    "definition": "室内深度覆盖不足的小区，表现为 SINR < -3 dB 且 RSRP 在 [-115, -105] dBm 区间采样占比高",
+    "formula": "deep_poor_ratio = COUNT(sinr_avg < -3 AND rsrp_avg BETWEEN -115 AND -105) / COUNT(*) * 100",
+    "threshold": "deep_poor_ratio > 20%",
+    "related_tables": ["dw.mr_5g_15min"],
+    "keywords": ["SINR", "深度覆盖", "室内", "穿透"]
+  },
+  {
+    "id": "kpi-003",
+    "category": "kpi_definition",
+    "kpi_family": "coverage",
+    "name": "过覆盖小区",
+    "aliases": ["过覆盖", "over coverage", "over shoot"],
+    "definition": "小区信号覆盖范围异常过大，表现为 TA (Timing Advance) 分布超出预期的采样占比高",
+    "formula": "over_shoot_ratio = COUNT(ta > 15) / COUNT(*) * 100",
+    "threshold": "over_shoot_ratio > 15%",
+    "related_tables": ["dw.mr_5g_15min", "dw.mr_4g_15min", "dim.engineering_param"],
+    "keywords": ["TA", "过覆盖", "覆盖范围", "越区"]
+  },
+  {
+    "id": "kpi-004",
+    "category": "kpi_definition",
+    "kpi_family": "mobility",
+    "name": "切换成功率",
+    "aliases": ["切换成功率", "HO success rate", "handover success"],
+    "definition": "切换成功次数 / 切换请求次数，按 cell × 时间窗口聚合",
+    "formula": "ho_succ_rate = COUNT(result='success') / COUNT(*) * 100",
+    "threshold": "ho_succ_rate < 99% 为异常",
+    "related_tables": ["dw.kpi_pm_cell_hour", "kafka.signaling_events"],
+    "keywords": ["切换", "handover", "HO", "成功率"]
+  },
+  {
+    "id": "kpi-005",
+    "category": "kpi_definition",
+    "kpi_family": "mobility",
+    "name": "切换失败原因分布",
+    "aliases": ["切换失败", "HO failure", "早切", "晚切", "too early", "too late"],
+    "definition": "切换失败原因分类统计：正常失败(normal)、过早切换(too_early)、过晚切换(too_late)、乒乓切换(pingpong)",
+    "formula": "按 cause 字段分组统计: GROUP BY cause",
+    "threshold": "早切+晚切占比 > 30% 需优化邻区关系/CIO",
+    "related_tables": ["kafka.signaling_events"],
+    "keywords": ["早切", "晚切", "乒乓", "cause", "失败原因"]
+  },
+  {
+    "id": "kpi-006",
+    "category": "kpi_definition",
+    "kpi_family": "accessibility",
+    "name": "RRC 建立成功率",
+    "aliases": ["RRC建立", "RRC setup", "接入成功率"],
+    "definition": "RRC 连接建立成功次数 / RRC 连接请求次数",
+    "formula": "rrc_succ_rate = COUNT(rrc_result='success') / COUNT(*) * 100",
+    "threshold": "rrc_succ_rate < 99.5% 为异常",
+    "related_tables": ["dw.kpi_pm_cell_hour"],
+    "keywords": ["RRC", "接入", "连接建立"]
+  },
+  {
+    "id": "kpi-007",
+    "category": "kpi_definition",
+    "kpi_family": "retainability",
+    "name": "掉话率",
+    "aliases": ["掉话率", "drop rate", "E-RAB drop", "呼叫保持"],
+    "definition": "异常释放的 E-RAB 数 / 成功建立的 E-RAB 总数",
+    "formula": "erab_drop_rate = COUNT(erab_result='abnormal_release') / COUNT(erab_result='established') * 100",
+    "threshold": "erab_drop_rate > 0.5% 为异常",
+    "related_tables": ["dw.kpi_pm_cell_hour"],
+    "keywords": ["掉话", "E-RAB", "保持", "drop"]
+  },
+  {
+    "id": "kpi-008",
+    "category": "kpi_definition",
+    "kpi_family": "qoe",
+    "name": "感知差小区",
+    "aliases": ["感知差", "QoE poor", "用户体验差", "quality of experience"],
+    "definition": "用户体验质量差的小区，综合评估视频卡顿率、网页时延、TCP 重传率等指标",
+    "formula": "qoe_score = w1*video_stall_rate + w2*web_rtt + w3*tcp_retrans_rate",
+    "threshold": "qoe_score > 阈值(按省分/地市差异化配置)",
+    "related_tables": ["dw.qoe_user_cell", "dw.kpi_pm_cell_hour"],
+    "keywords": ["QoE", "感知", "视频", "卡顿", "TCP", "网页"]
+  },
+
+  {
+    "id": "kpi-009",
+    "category": "kpi_definition",
+    "kpi_family": "accessibility",
+    "name": "E-RAB 建立成功率",
+    "aliases": ["E-RAB建立", "ERAB setup", "承载建立成功率"],
+    "definition": "E-RAB (E-UTRAN Radio Access Bearer) 建立成功次数 / E-RAB 建立请求次数，反映业务承载建立能力",
+    "formula": "erab_succ_rate = COUNT(erab_result='success') / COUNT(*) * 100",
+    "threshold": "erab_succ_rate < 99% 为异常",
+    "related_tables": ["dw.kpi_pm_cell_hour"],
+    "keywords": ["E-RAB", "承载", "建立", "accessibility"]
+  },
+
+  {
+    "id": "method-001",
+    "category": "methodology",
+    "kpi_family": "coverage",
+    "name": "弱覆盖小区识别标准流程 (v2口径)",
+    "definition": "1) 取最近 7 天 MR 数据; 2) 按 cell_id × day 聚合; 3) 计算每日 RSRP<-110 占比; 4) 任一天超 30% 标记为弱覆盖小区",
+    "formula": "WITH daily AS (SELECT cell_id, dt, AVG(CASE WHEN rsrp_avg < -110 THEN 1.0 ELSE 0.0 END) AS weak_ratio FROM dw.mr_5g_15min WHERE dt >= date_sub(current_date, 7) GROUP BY cell_id, dt) SELECT DISTINCT cell_id FROM daily WHERE weak_ratio > 0.3",
+    "related_tables": ["dw.mr_5g_15min"],
+    "related_kpis": ["kpi-001"],
+    "notes": "v2 口径与 v1 差异: v2 改为 7 天窗口(v1 为 30 天),且使用日粒度而非 15min 粒度"
+  },
+  {
+    "id": "method-002",
+    "category": "methodology",
+    "kpi_family": "mobility",
+    "name": "切换失败根因定位流程",
+    "definition": "1) 从信令流中提取 event_type='handover' 事件; 2) 按 cause 分类(too_early/too_late/normal); 3) 按 src_cell × hour 汇总; 4) 关联工参表获取邻区关系与 CIO 配置",
+    "formula": "SELECT src_cell, cause, COUNT(*) AS cnt FROM kafka.signaling_events WHERE event_type='handover' GROUP BY src_cell, cause",
+    "related_tables": ["kafka.signaling_events", "dim.engineering_param"],
+    "related_kpis": ["kpi-005"],
+    "notes": "早切: UE 在新小区未稳定即触发切换; 晚切: 源小区信号已严重衰减仍未切换"
+  },
+  {
+    "id": "method-003",
+    "category": "methodology",
+    "kpi_family": "coverage",
+    "name": "MR 数据与工参数据联邦分析流程",
+    "definition": "1) 以 cell_id 为 join key 将 MR 表与工参维表关联; 2) 附加 site_id/district/经纬度 维度; 3) 按区县/站址做聚合透视",
+    "formula": "SELECT e.district, COUNT(DISTINCT m.cell_id) AS weak_cell_cnt, AVG(m.weak_cov_ratio) AS avg_weak_ratio FROM dw.mr_5g_15min m JOIN dim.engineering_param e ON m.cell_id = e.cell_id WHERE m.weak_cov_ratio > 0.3 GROUP BY e.district",
+    "related_tables": ["dw.mr_5g_15min", "dim.engineering_param"],
+    "related_kpis": ["kpi-001"],
+    "notes": "工参维表通常按天快照，与 MR 的 15min 粒度存在时间对齐问题; 建议使用 latest 维表快照"
+  },
+
+  {
+    "id": "src-001",
+    "category": "source_desc",
+    "kpi_family": "coverage",
+    "name": "5G MR 15分钟 KPI 表",
+    "aliases": ["MR表", "MR 5G", "mr_5g"],
+    "definition": "5G 测量报告 (Measurement Report) 15 分钟小区级聚合 KPI，包含 RSRP/RSRQ/SINR 等无线测量指标",
+    "related_tables": ["dw.mr_5g_15min"],
+    "notes": "数据量极大(1000+ 小区 × 96 个15min窗口/天), 采样查询时必须加 LIMIT 或时间范围过滤"
+  },
+  {
+    "id": "src-002",
+    "category": "source_desc",
+    "kpi_family": "coverage",
+    "name": "小区工参维表",
+    "aliases": ["工参", "工程参数", "engineering param"],
+    "definition": "小区工程参数配置维表，包含 site_id/district/经纬度/方位角/下倾角等",
+    "related_tables": ["dim.engineering_param"],
+    "notes": "维表数据量小(~10k 行),可直接全量 join"
+  },
+  {
+    "id": "src-003",
+    "category": "source_desc",
+    "kpi_family": "mobility",
+    "name": "切换信令事件流",
+    "aliases": ["信令", "signaling", "事件流", "handover events"],
+    "definition": "Kafka 实时信令事件流，JSONL 格式，包含 event_type/handover/access 等事件类型及其结果",
+    "related_tables": ["kafka.signaling_events"],
+    "notes": "Kafka 流数据，需指定消费窗口(start_offset/end_offset 或时间范围), v1 使用 spark-sql 读对应 topic 的 Hive 外表映射"
+  },
+
+  {
+    "id": "pattern-001",
+    "category": "join_pattern",
+    "kpi_family": "coverage",
+    "name": "MR + 工参联邦 (cell_id)",
+    "definition": "用 cell_id 将 MR KPI 表与工参维表关联，附加上 site_id/district/经纬度等维表字段，用于区县级聚合分析",
+    "formula": "JOIN dim.engineering_param ON m.cell_id = e.cell_id",
+    "related_tables": ["dw.mr_5g_15min", "dim.engineering_param"],
+    "related_kpis": ["kpi-001", "kpi-002", "kpi-003"]
+  },
+  {
+    "id": "pattern-002",
+    "category": "join_pattern",
+    "kpi_family": "mobility",
+    "name": "信令 + 工参联邦 (cell_id)",
+    "definition": "切换信令事件的 src_cell / dst_cell 分别 join 工参维表获取源/目标小区地理信息",
+    "formula": "JOIN dim.engineering_param src ON s.src_cell = src.cell_id JOIN dim.engineering_param dst ON s.dst_cell = dst.cell_id",
+    "related_tables": ["kafka.signaling_events", "dim.engineering_param"],
+    "related_kpis": ["kpi-005"]
+  },
+
+  {
+    "id": "term-001",
+    "category": "terminology",
+    "name": "RAT 制式术语",
+    "aliases": ["RAT", "制式", "网络制式"],
+    "definition": "4G = LTE, 5G_SA = 5G 独立组网, 5G_NSA = 5G 非独立组网(EN-DC方式, 锚点LTE+NR SCG), mixed = 多制式混合",
+    "keywords": ["4G", "5G", "SA", "NSA", "LTE", "NR", "EN-DC"]
+  },
+  {
+    "id": "term-002",
+    "category": "terminology",
+    "name": "网络粒度术语",
+    "aliases": ["粒度", "grain", "聚合粒度"],
+    "definition": "cell = 小区, site = 站址(物理站点, 含多个小区), sector = 扇区, tracking_area = TA跟踪区, district = 区县, city = 地市",
+    "keywords": ["cell", "site", "sector", "TA", "district", "区县", "地市"]
+  },
+  {
+    "id": "term-003",
+    "category": "terminology",
+    "name": "时间粒度术语",
+    "aliases": ["时间粒度", "time grain", "聚合窗口"],
+    "definition": "15min = 15分钟(96窗口/天), hour = 小时(24窗口/天), day = 天, week = 周",
+    "keywords": ["15min", "小时", "天", "周", "窗口"]
+  }
+]
