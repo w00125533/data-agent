@@ -19,10 +19,14 @@ public class Main {
     public static void main(String[] args) {
         var demo = false;
         var noLlm = false;
+        var reverse = false;
         for (var arg : args) {
             if ("--demo".equals(arg)) demo = true;
             if ("--no-llm".equals(arg)) noLlm = true;
+            if ("--reverse".equals(arg)) reverse = true;
         }
+
+        var taskDirection = reverse ? Spec.TaskDirection.REVERSE_SYNTHETIC : Spec.TaskDirection.FORWARD_ETL;
 
         // Load agent.properties from classpath, env vars override
         var props = new Properties();
@@ -50,14 +54,14 @@ public class Main {
         }
 
         if (demo) {
-            runDemo(llmClient, hmsUri, sparkContainer, flinkContainer);
+            runDemo(llmClient, hmsUri, sparkContainer, flinkContainer, taskDirection);
         } else {
-            runInteractive(llmClient, hmsUri, sparkContainer, flinkContainer);
+            runInteractive(llmClient, hmsUri, sparkContainer, flinkContainer, taskDirection);
         }
     }
 
     private static void runDemo(DeepSeekClient llmClient, String hmsUri, String sparkContainer,
-                                String flinkContainer) {
+                                String flinkContainer, Spec.TaskDirection taskDirection) {
         System.out.println("=".repeat(60));
         System.out.println("M0b Demo — 无线网络感知评估 Data Agent");
         System.out.println("=".repeat(60));
@@ -69,7 +73,7 @@ public class Main {
             System.out.println("场景 " + (i + 1) + ": " + msg);
             System.out.println("─".repeat(60));
 
-            var agent = new AgentCore(llmClient, Spec.TaskDirection.FORWARD_ETL,
+            var agent = new AgentCore(llmClient, taskDirection,
                     hmsUri, sparkContainer, flinkContainer, new com.wireless.agent.knowledge.DomainKnowledgeBase());
             var result = agent.processMessage(msg);
 
@@ -94,9 +98,9 @@ public class Main {
     }
 
     private static void runInteractive(DeepSeekClient llmClient, String hmsUri, String sparkContainer,
-                                      String flinkContainer) {
+                                      String flinkContainer, Spec.TaskDirection taskDirection) {
         System.out.println("Data Agent — 无线网络感知评估 (输入 /quit 退出)");
-        var agent = new AgentCore(llmClient, Spec.TaskDirection.FORWARD_ETL,
+        var agent = new AgentCore(llmClient, taskDirection,
                 hmsUri, sparkContainer, flinkContainer, new com.wireless.agent.knowledge.DomainKnowledgeBase());
         System.out.println("[Spec] " + agent.specSummary());
 

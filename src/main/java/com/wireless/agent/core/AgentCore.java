@@ -135,16 +135,23 @@ public class AgentCore {
         else if (containsAny(msg, "接入", "rrc", "access")) kpiFamily = "accessibility";
         else if (containsAny(msg, "感知", "qoe", "视频", "tcp")) kpiFamily = "qoe";
 
+        var isReverse = spec.taskDirection() == Spec.TaskDirection.REVERSE_SYNTHETIC;
+        var isPastingCode = isReverse && containsAny(msg, "select", "insert", "from", "where", "group by");
+
+        if (isPastingCode) {
+            spec.originalPipeline(userMessage.trim());
+        }
+
         var result = new LinkedHashMap<String, Object>();
         result.put("intent_update", Map.of(
-            "target_name", "弱覆盖小区统计",
-            "business_definition", userMessage,
-            "kpi_family", kpiFamily,
+            "target_name", isReverse ? "synthetic_test_data" : "弱覆盖小区统计",
+            "business_definition", isReverse ? "反向合成测试数据生成" : userMessage,
+            "kpi_family", isReverse ? "synthetic" : kpiFamily,
             "ne_grain", "district",
             "time_grain", "day",
             "rat", "5G_SA",
             "timeliness", "batch_daily",
-            "identified_sources", List.of("dw.mr_5g_15min", "dim.engineering_param"),
+            "identified_sources", isReverse ? List.of("signaling_events") : List.of("dw.mr_5g_15min", "dim.engineering_param"),
             "open_questions", List.of()
         ));
         result.put("next_action", "ready_for_tools");
@@ -282,7 +289,12 @@ public class AgentCore {
         var warnings = (List<String>) validationData.get("warnings");
 
         // 6. Sandbox dry-run
-        var dryRunResult = sandboxTool.dryRun(code, spec);
+        Map<String, Object> dryRunResult;
+        if (spec.taskDirection() == Spec.TaskDirection.REVERSE_SYNTHETIC) {
+            dryRunResult = sandboxTool.dualDryRun(code, spec);
+        } else {
+            dryRunResult = sandboxTool.dryRun(code, spec);
+        }
 
         spec.state(Spec.SpecState.CODEGEN_DONE);
 
