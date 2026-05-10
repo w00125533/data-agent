@@ -1,7 +1,9 @@
 package com.wireless.agent;
 
 import com.wireless.agent.core.AgentCore;
+import com.wireless.agent.core.EngineSelector;
 import com.wireless.agent.core.Spec;
+import com.wireless.agent.knowledge.DomainKnowledgeBase;
 import com.wireless.agent.llm.DeepSeekClient;
 import org.junit.jupiter.api.Test;
 
@@ -174,5 +176,58 @@ class IntegrationTest {
 
         assertThat(baseline.hasBaseline("unknown.table")).isFalse();
         assertThat(baseline.resolveTable("unknown.table")).isEqualTo("unknown.table");
+    }
+
+    @Test
+    void shouldProcessFlinkSqlTaskWithKafkaSource() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+
+        var result = agent.processMessage("实时监控最近1小时每个小区的切换失败次数");
+
+        assertThat(result.get("next_action"))
+                .isIn("code_done", "dry_run_ok", "sandbox_failed");
+        var code = result.get("code").toString();
+        assertThat(code).isNotEmpty();
+    }
+
+    @Test
+    void shouldProcessSparkSqlTaskWithBatchSources() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+
+        var result = agent.processMessage("按区县统计最近30天弱覆盖小区数量");
+
+        assertThat(result.get("next_action"))
+                .isIn("code_done", "dry_run_ok", "sandbox_failed");
+        var code = result.get("code").toString();
+        assertThat(code).isNotEmpty();
+        // Spark SQL batch task
+        var engine = result.get("engine").toString();
+        assertThat(engine).isIn("spark_sql", "flink_sql");
+    }
+
+    @Test
+    void shouldSupportAllThreeEngineTypes() {
+        // Verify EngineSelector covers all 3 types
+        var sparkSpec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        sparkSpec.sources(List.of(new Spec.SourceBinding().role("main")
+                .binding(Map.of("catalog", "hive", "table_or_topic", "dw.mr_5g_15min"))));
+        assertThat(EngineSelector.select(sparkSpec).recommended()).isEqualTo("spark_sql");
+
+        var flinkSpec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        flinkSpec.sources(List.of(new Spec.SourceBinding().role("stream")
+                .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))));
+        assertThat(EngineSelector.select(flinkSpec).recommended()).isEqualTo("flink_sql");
+
+        var javaFlinkSpec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        javaFlinkSpec.target(new Spec.TargetSpec()
+                .name("stateful").businessDefinition("复杂状态机分析"));
+        javaFlinkSpec.sources(List.of(new Spec.SourceBinding().role("stream")
+                .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))));
+        assertThat(EngineSelector.select(javaFlinkSpec).recommended())
+                .isEqualTo("java_flink_streamapi");
     }
 }
