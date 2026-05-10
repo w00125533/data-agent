@@ -107,3 +107,24 @@ mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo"
 | `metadataTool.searchKb("RSRP")` | 通过 MetadataTool 间接查询 |
 
 **AgentCore LLM prompt now includes KB context** -- the system prompt is augmented with relevant domain methodology definitions based on the current KPI family detected from the user's input.
+
+## M3 -- Engine Expansion (Flink SQL + Java Flink Stream API)
+
+**Three engine artifacts now supported:**
+
+| Engine | Use Case | Dry-run Target |
+|--------|----------|----------------|
+| `spark_sql` | 批源 Hive/StarRocks, join+聚合 | `da-spark-master` (spark-sql) |
+| `flink_sql` | 流源 Kafka/CDC, 时间窗口聚合 | `da-flink-jobmanager` (sql-client.sh) |
+| `java_flink_streamapi` | 复杂状态机/递归/外部服务调用 | `da-flink-jobmanager` (flink run) |
+
+**Engine selection logic:**
+
+| Signal | Selection |
+|--------|-----------|
+| 源含 Kafka + 时间窗口 | `flink_sql` |
+| 源含 Kafka + 复杂状态/状态机 | `java_flink_streamapi` |
+| 反向合成数据生产 | `java_flink_streamapi` |
+| 全 Hive 批源 | `spark_sql` |
+
+**Hardcoded fallbacks** for all three engines when LLM is unavailable (demo mode).
