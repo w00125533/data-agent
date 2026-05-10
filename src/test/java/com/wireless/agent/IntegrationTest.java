@@ -100,4 +100,24 @@ class IntegrationTest {
         assertThat(result.get("next_action")).isIn("code_done", "dry_run_ok", "sandbox_failed");
         assertThat(result.get("code")).isNotNull();
     }
+
+    @Test
+    void shouldRunFullPipelineWithRealToolsAndFallback() {
+        // Uses HMS fallback (mock schemas) + real Validator + Sandbox
+        var agent = new AgentCore(
+                null,  // no LLM, uses mock extraction
+                Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999",  // HMS fallback -> mock
+                "da-spark-master"
+        );
+        var result = agent.processMessage("给我近30天每个区县5G弱覆盖小区清单");
+
+        assertThat(result.get("next_action"))
+                .isIn("code_done", "dry_run_ok", "sandbox_failed");
+        assertThat(result.get("code")).isNotNull();
+        assertThat(result.get("code").toString()).isNotEmpty();
+        // Warnings and preview should be present
+        assertThat(result).containsKey("warnings");
+        assertThat(result).containsKey("preview");
+    }
 }
