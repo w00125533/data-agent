@@ -10,6 +10,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProfilerToolTest {
 
     @Test
+    void shouldProvideThreeArgProfileTableOverload() throws Exception {
+        var method = ProfilerTool.class.getMethod("profileTable", String.class, int.class, List.class);
+        assertThat(method).isNotNull();
+        assertThat(method.getParameterCount()).isEqualTo(3);
+    }
+
+    @Test
     void shouldHaveCorrectToolName() {
         var runner = new DockerCommandRunner();
         var tool = new ProfilerTool(runner, "da-spark-master");

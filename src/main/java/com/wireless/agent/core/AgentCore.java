@@ -209,15 +209,15 @@ public class AgentCore {
 
         // 2. Profiler — sample data for evidence
         var profileResult = profilerTool.run(spec);
-        if (profileResult.success()) {
+        if (profileResult.success() && profileResult.data() != null) {
             @SuppressWarnings("unchecked")
             var evidence = (Map<String, Object>) profileResult.data();
-            spec.evidence().add(new Spec.Evidence("data_profile",
-                    spec.sources().stream()
-                            .map(s -> s.binding().getOrDefault("table_or_topic", "").toString())
-                            .filter(t -> !t.isEmpty())
-                            .findFirst().orElse("unknown"),
-                    evidence));
+            var sourceNames = spec.sources().stream()
+                    .map(s -> s.binding().getOrDefault("table_or_topic", "").toString())
+                    .filter(t -> !t.isEmpty())
+                    .collect(java.util.stream.Collectors.joining(", "));
+            if (sourceNames.isEmpty()) sourceNames = "unknown";
+            spec.evidence().add(new Spec.Evidence("data_profile", sourceNames, evidence));
         }
 
         // 3. Engine selection

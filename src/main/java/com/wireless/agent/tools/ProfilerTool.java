@@ -35,7 +35,9 @@ public class ProfilerTool implements Tool {
             var tblObj = binding.get("table_or_topic");
             var tbl = tblObj != null ? tblObj.toString() : "";
             if (!tbl.isEmpty()) {
-                var profile = profileTable(tbl, 5);
+                // Pass the resolved schema from Spec (already fetched by HmsMetadataTool)
+                var schema = src.schema_();
+                var profile = profileTable(tbl, 5, schema);
                 results.put(tbl, profile.data());
             }
         }
@@ -43,27 +45,20 @@ public class ProfilerTool implements Tool {
                 Map.of("type", "data_profile", "findings", Map.of("profiled_tables", results.size())));
     }
 
-    /** Profile a single table: return row count + per-column stats. */
-    public ToolResult profileTable(String tableName, int topK) {
+    /** Profile a single table using the provided schema (from HMS or fallback). */
+    public ToolResult profileTable(String tableName, int topK, List<Map<String, String>> schema) {
         try {
             var rowCount = runSparkSql(buildRowCountQuery(tableName));
             var stats = new LinkedHashMap<String, Object>();
             stats.put("row_count", parseCount(rowCount));
 
-            var mockFallback = new MockMetadataTool();
-            var schemaResult = mockFallback.lookup(tableName);
-            if (schemaResult.success() && schemaResult.data() instanceof Map<?, ?> data) {
-                var schemaObj = data.get("schema");
-                if (schemaObj instanceof List<?> list) {
-                    for (var item : list) {
-                        if (item instanceof Map<?, ?> col) {
-                            var colName = col.get("name");
-                            if (colName != null) {
-                                var nullCount = runSparkSql(buildNullCheckQuery(tableName, colName.toString()));
-                                stats.put(colName + "_null_rate",
-                                        String.format("%.2f%%", 100.0 * parseCount(nullCount) / Math.max(1, parseCount(rowCount))));
-                            }
-                        }
+            if (schema != null) {
+                for (var col : schema) {
+                    var colName = col.get("name");
+                    if (colName != null) {
+                        var nullCount = runSparkSql(buildNullCheckQuery(tableName, colName));
+                        stats.put(colName + "_null_rate",
+                                String.format("%.2f%%", 100.0 * parseCount(nullCount) / Math.max(1, parseCount(rowCount))));
                     }
                 }
             }
@@ -72,6 +67,23 @@ public class ProfilerTool implements Tool {
             return ToolResult.fail("Profiling failed: " + e.getMessage(),
                     Map.of("row_count", "N/A"));
         }
+    }
+
+    /** @deprecated Use {@link #profileTable(String, int, List)} with spec-resolved schema. */
+    @Deprecated
+    public ToolResult profileTable(String tableName, int topK) {
+        var mockFallback = new MockMetadataTool();
+        List<Map<String, String>> schema = null;
+        var schemaResult = mockFallback.lookup(tableName);
+        if (schemaResult.success() && schemaResult.data() instanceof Map<?, ?> data) {
+            var schemaObj = data.get("schema");
+            if (schemaObj instanceof List<?> list) {
+                @SuppressWarnings("unchecked")
+                var typedList = (List<Map<String, String>>) list;
+                schema = typedList;
+            }
+        }
+        return profileTable(tableName, topK, schema);
     }
 
     static String buildProfileQuery(String table, List<String> columns, int topK) {
