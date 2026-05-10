@@ -127,4 +127,48 @@ class CodegenToolTest {
         assertThat(code).contains("flink_sql");
         assertThat(code).contains("handover");
     }
+
+    @Test
+    void shouldGenerateJavaFlinkStreamApiPrompt() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.target(new Spec.TargetSpec()
+                .name("stateful_sessionization")
+                .businessDefinition("需要复杂状态机的Session窗口聚合")
+                .grain("(cell_id, session)")
+                .timeliness("streaming"));
+        spec.sources(List.of(
+                new Spec.SourceBinding()
+                        .role("signaling")
+                        .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))
+        ));
+        spec.engineDecision(new Spec.EngineDecision("java_flink_streamapi",
+                "复杂状态机SQL无法表达 → Java Flink Stream API"));
+
+        var prompt = CodegenTool.buildCodegenPrompt(spec);
+        assertThat(prompt).contains("Java Flink Stream API");
+        assertThat(prompt).contains("java_flink_streamapi");
+    }
+
+    @Test
+    void shouldFallbackToHardcodedJavaFlinkWhenNoLlm() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.target(new Spec.TargetSpec()
+                .name("kpi_stream")
+                .businessDefinition("通用流式KPI加工")
+                .grain("(cell_id, minute)"));
+        spec.sources(List.of(
+                new Spec.SourceBinding()
+                        .role("signaling")
+                        .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))
+        ));
+        spec.engineDecision(new Spec.EngineDecision("java_flink_streamapi",
+                "复杂窗口逻辑 → Java"));
+
+        var tool = new CodegenTool(null);
+        var result = tool.run(spec);
+        assertThat(result.success()).isTrue();
+        var code = result.data().toString();
+        assertThat(code).contains("java_flink_streamapi");
+        assertThat(code).contains("FlinkDataStream");
+    }
 }

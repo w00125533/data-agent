@@ -44,9 +44,18 @@ public class CodegenTool implements Tool {
             9. Wrap the final SQL in a ```sql code block.
             """;
 
-    // Placeholder — will be replaced by Task 3
     public static final String JAVA_FLINK_SYSTEM_PROMPT = """
-            You are a Java Flink Stream API code generator.
+            You are a Java Flink Stream API code generator for wireless network perception tasks.
+
+            Rules:
+            1. Output ONLY the Java code, no explanation before or after.
+            2. Use org.apache.flink.streaming.api (Flink 1.18+, Java 17).
+            3. Use FlinkKafkaConsumer for Kafka sources, FlinkKafkaProducer for sinks.
+            4. Implement KeyedProcessFunction for stateful logic (state machines, sessions).
+            5. Use MapState/ValueState for complex state management.
+            6. Include main() method with StreamExecutionEnvironment setup.
+            7. Handle checkpoints and state TTL where needed.
+            8. Wrap the final code in a ```java code block.
             """;
 
     private final DeepSeekClient llmClient;
@@ -258,7 +267,67 @@ public class CodegenTool implements Tool {
                 target != null ? target.name() : "output");
     }
 
+    /** Fallback hardcoded Java Flink Stream API code for demo scenarios. */
     static String hardcodedJavaFlink(Spec spec) {
-        return "```java\n// Java Flink placeholder\n```";
+        var target = spec.target();
+        var def = target != null ? target.businessDefinition() : "";
+
+        if (def.contains("切换失败") || def.contains("Session")
+                || def.toLowerCase().contains("handover") || def.toLowerCase().contains("session")) {
+            return """
+                    ```java
+                    // 切换事件 Session 窗口聚合 (Java Flink Stream API)
+                    import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+                    import org.apache.flink.api.common.state.*;
+                    import org.apache.flink.streaming.api.datastream.DataStream;
+                    import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+                    import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
+                    import org.apache.flink.streaming.api.windowing.assigners.*;
+                    import org.apache.flink.streaming.api.windowing.time.Time;
+                    import org.apache.flink.util.Collector;
+
+                    public class HandoverSessionizer {
+                        public static void main(String[] args) throws Exception {
+                            StreamExecutionEnvironment env =
+                                StreamExecutionEnvironment.getExecutionEnvironment();
+                            env.enableCheckpointing(60000);
+
+                            DataStream<HandoverEvent> events = env
+                                .addSource(new FlinkKafkaConsumer<>("signaling_events",
+                                    new HandoverEventSchema(), kafkaProps))
+                                .assignTimestampsAndWatermarks(
+                                    WatermarkStrategy.<HandoverEvent>forBoundedOutOfOrderness(
+                                        java.time.Duration.ofSeconds(5))
+                                    .withTimestampAssigner((e, ts) -> e.getTimestamp()));
+
+                            events
+                                .keyBy(HandoverEvent::getSrcCell)
+                                .window(EventTimeSessionWindows.withGap(Time.minutes(15)))
+                                .process(new SessionAggregator())
+                                .addSink(new FlinkKafkaProducer<>("output_topic",
+                                    new SessionResultSchema(), kafkaProps));
+
+                            env.execute("Handover Sessionizer");
+                        }
+                    }
+                    ```""";
+        }
+        return String.format("""
+                ```java
+                // %s (Java Flink Stream API)
+                import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+                import org.apache.flink.streaming.api.datastream.DataStream;
+
+                public class FlinkDataStream {
+                    public static void main(String[] args) throws Exception {
+                        StreamExecutionEnvironment env =
+                            StreamExecutionEnvironment.getExecutionEnvironment();
+                        DataStream<String> source = env.fromElements("sample_event");
+                        source.print();
+                        env.execute("DataStream Job");
+                    }
+                }
+                ```""",
+                target != null ? target.name() : "FlinkDataStream");
     }
 }
