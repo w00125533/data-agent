@@ -71,7 +71,35 @@ public class ValidatorTool implements Tool {
             }
         }
 
-        // 5. Check table references against spec sources
+        // 5. For reverse synthetic: validate INSERT INTO target matches original pipeline source
+        if (spec.taskDirection() == Spec.TaskDirection.REVERSE_SYNTHETIC
+                && spec.originalPipeline() != null && !spec.originalPipeline().isEmpty()) {
+            var insertPattern = java.util.regex.Pattern.compile(
+                    "\\bINSERT\\s+INTO\\s+([a-zA-Z_][a-zA-Z0-9_.]*)", java.util.regex.Pattern.CASE_INSENSITIVE);
+            var insertMatcher = insertPattern.matcher(sql);
+            var insertTargets = new ArrayList<String>();
+            while (insertMatcher.find()) {
+                insertTargets.add(insertMatcher.group(1).toLowerCase());
+            }
+            if (!insertTargets.isEmpty()) {
+                // Check inserted table is one of the spec sources (the pipeline input)
+                var pipelineInputs = new java.util.HashSet<String>();
+                for (var src : spec.sources()) {
+                    var tbl = src.binding().getOrDefault("table_or_topic", "").toString();
+                    if (!tbl.isEmpty()) pipelineInputs.add(tbl.toLowerCase());
+                }
+                for (var it : insertTargets) {
+                    var found = pipelineInputs.stream().anyMatch(t ->
+                        t.equals(it) || it.endsWith("." + t) || t.endsWith("." + it));
+                    if (!found && !it.equals("values")) {
+                        warnings.add("INSERT target " + it
+                                + " does not match any source in original pipeline: " + pipelineInputs);
+                    }
+                }
+            }
+        }
+
+        // 6. Check table references against spec sources
         var knownTables = new ArrayList<String>();
         for (var src : spec.sources()) {
             var tbl = src.binding().getOrDefault("table_or_topic", "").toString();
@@ -89,7 +117,7 @@ public class ValidatorTool implements Tool {
             }
         }
 
-        // 6. Basic syntax checks
+        // 7. Basic syntax checks
         if (!sql.toUpperCase().contains("SELECT")) {
             warnings.add("SQL has no SELECT clause");
         }

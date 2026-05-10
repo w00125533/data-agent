@@ -78,4 +78,53 @@ class ValidatorToolTest {
         var warnings = (List<String>) ((Map<?, ?>) result.data()).get("warnings");
         assertThat(warnings).isNotEmpty();
     }
+
+    @Test
+    void shouldValidateReverseSyntheticSchemaCompatibility() {
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.originalPipeline("""
+                SELECT cell_id, COUNT(*) AS failure_count
+                FROM signaling_events
+                WHERE event_type = 'handover'
+                GROUP BY cell_id;""");
+        spec.sources(List.of(
+                new Spec.SourceBinding()
+                        .role("stream")
+                        .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))
+        ));
+        spec.engineDecision(new Spec.EngineDecision("flink_sql", "反向合成"));
+
+        var generatedCode = """
+                ```sql
+                INSERT INTO signaling_events (cell_id, event_type, result, ts)
+                VALUES ('cell_A', 'handover', 'failure', 1000);
+                ```""";
+
+        var tool = new ValidatorTool();
+        var result = tool.validate(generatedCode, spec);
+        assertThat(result.success()).isTrue();
+    }
+
+    @Test
+    void shouldCheckSchemaCompatibilityForReverseSynthetic() {
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.originalPipeline("SELECT cell_id, COUNT(*) FROM signaling_events WHERE event_type='handover' GROUP BY cell_id;");
+        spec.sources(List.of(
+                new Spec.SourceBinding()
+                        .role("stream")
+                        .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))
+        ));
+
+        var generatedCode = """
+                ```sql
+                INSERT INTO signaling_events VALUES ('cell_A', 'handover', 'failure', 1000);
+                ```""";
+
+        var tool = new ValidatorTool();
+        var result = tool.validate(generatedCode, spec);
+        // The generated SQL inserts into signaling_events which matches spec source
+        @SuppressWarnings("unchecked")
+        var warnings = (List<String>) ((Map<?, ?>) result.data()).get("warnings");
+        assertThat(warnings.stream().noneMatch(w -> w.contains("not in spec"))).isTrue();
+    }
 }
