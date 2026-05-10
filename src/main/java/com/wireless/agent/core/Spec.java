@@ -141,6 +141,7 @@ public class Spec {
     @JsonProperty("engine_decision") private EngineDecision engineDecision;
     @JsonProperty("open_questions")  private List<Map<String, Object>> openQuestions = new ArrayList<>();
     @JsonProperty("evidence")        private List<Evidence> evidence = new ArrayList<>();
+    @JsonProperty("original_pipeline") private String originalPipeline;
     @JsonProperty("owners")          private Map<String, List<String>> owners = new LinkedHashMap<>();
     @JsonProperty("test_cases")      private List<Map<String, Object>> testCases = new ArrayList<>();
     @JsonProperty("validate_through_target_pipeline") private boolean validateThroughTargetPipeline = true;
@@ -167,6 +168,8 @@ public class Spec {
     public Map<String, List<String>> owners() { return owners; }
     public List<Map<String, Object>> testCases() { return testCases; }
     public boolean validateThroughTargetPipeline() { return validateThroughTargetPipeline; }
+    public String originalPipeline() { return originalPipeline; }
+    public Spec originalPipeline(String v) { originalPipeline = v; return this; }
 
     // ─── Methods ─────────────────────────────────────
 

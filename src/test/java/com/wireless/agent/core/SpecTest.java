@@ -72,4 +72,31 @@ class SpecTest {
         assertThat(json).contains("\"reverse_synthetic\"");
         assertThat(json).contains("\"ready_to_codegen\"");
     }
+
+    @Test
+    void shouldSerializeOriginalPipeline() throws Exception {
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.originalPipeline("""
+                INSERT INTO output_kpi
+                SELECT cell_id, COUNT(*) AS failure_count
+                FROM signaling_events
+                WHERE event_type = 'handover'
+                GROUP BY cell_id;""");
+
+        var json = mapper.writeValueAsString(spec);
+        assertThat(json).contains("original_pipeline");
+        assertThat(json).contains("signaling_events");
+    }
+
+    @Test
+    void shouldDefaultOriginalPipelineToNull() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        assertThat(spec.originalPipeline()).isNull();
+    }
+
+    @Test
+    void shouldReturnNullWhenPipelineNotSet() {
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        assertThat(spec.originalPipeline()).isNull();
+    }
 }
