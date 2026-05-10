@@ -29,6 +29,26 @@ public class CodegenTool implements Tool {
             8. Wrap the final SQL in a ```sql code block.
             """;
 
+    public static final String FLINK_SQL_SYSTEM_PROMPT = """
+            You are a Flink SQL code generator for wireless network perception tasks.
+
+            Rules:
+            1. Output ONLY the Flink SQL code, no explanation before or after.
+            2. Use Flink SQL syntax (Flink 1.18+ with Hive catalog integration).
+            3. Kafka sources must declare watermark: WATERMARK FOR ts AS ts - INTERVAL '5' SECOND.
+            4. Time-windowed aggregations use TUMBLE/HOP/SESSION window functions.
+            5. Include CREATE TABLE AS or INSERT INTO for target table.
+            6. Join columns must match their semantic meaning.
+            7. Filter conditions must reflect the business definition.
+            8. For lookup join with Hive dim table, use FOR SYSTEM_TIME AS OF syntax.
+            9. Wrap the final SQL in a ```sql code block.
+            """;
+
+    // Placeholder — will be replaced by Task 3
+    public static final String JAVA_FLINK_SYSTEM_PROMPT = """
+            You are a Java Flink Stream API code generator.
+            """;
+
     private final DeepSeekClient llmClient;
 
     public CodegenTool(DeepSeekClient llmClient) {
@@ -51,15 +71,15 @@ public class CodegenTool implements Tool {
             String code;
             if (llmClient != null) {
                 var messages = List.of(
-                    Map.of("role", "system", "content", CODGEN_SYSTEM_PROMPT),
+                    Map.of("role", "system", "content", selectSystemPrompt(spec)),
                     Map.of("role", "user", "content", prompt)
                 );
                 code = llmClient.chat(messages);
                 if (code.startsWith("[ERROR]")) {
-                    code = hardcodedSparkSql(spec);
+                    code = hardcodedCode(spec);
                 }
             } else {
-                code = hardcodedSparkSql(spec);
+                code = hardcodedCode(spec);
             }
             return ToolResult.ok(Map.of(
                 "code", code,
@@ -113,7 +133,7 @@ public class CodegenTool implements Tool {
                     - Engine: %s (rationale: %s)
                     - Transformations: %s
                     """,
-                    engine.recommended(),
+                    displayEngineName(engine.recommended()),
                     spec.taskDirection().value(),
                     target != null ? target.name() : "(unspecified)",
                     target != null ? target.businessDefinition() : "(unspecified)",
@@ -162,5 +182,83 @@ public class CodegenTool implements Tool {
                 SELECT * FROM dw.mr_5g_15min LIMIT 100;
                 ```""",
                 target != null ? target.name() : "output");
+    }
+
+    private static String selectSystemPrompt(Spec spec) {
+        var engine = spec.engineDecision();
+        if (engine == null) return CODGEN_SYSTEM_PROMPT;
+        return switch (engine.recommended()) {
+            case "flink_sql" -> FLINK_SQL_SYSTEM_PROMPT;
+            case "java_flink_streamapi" -> JAVA_FLINK_SYSTEM_PROMPT;
+            default -> CODGEN_SYSTEM_PROMPT;
+        };
+    }
+
+    private static String displayEngineName(String engineId) {
+        return switch (engineId) {
+            case "flink_sql" -> "Flink SQL";
+            case "java_flink_streamapi" -> "Java Flink Stream API";
+            case "spark_sql" -> "Spark SQL";
+            default -> engineId;
+        };
+    }
+
+    /** Fallback hardcoded code for all engines when LLM is unavailable. */
+    static String hardcodedCode(Spec spec) {
+        var engine = spec.engineDecision();
+        if (engine == null) return hardcodedSparkSql(spec);
+        return switch (engine.recommended()) {
+            case "flink_sql" -> hardcodedFlinkSql(spec);
+            case "java_flink_streamapi" -> hardcodedJavaFlink(spec);
+            default -> hardcodedSparkSql(spec);
+        };
+    }
+
+    /** Fallback hardcoded Flink SQL for demo scenarios. */
+    static String hardcodedFlinkSql(Spec spec) {
+        var target = spec.target();
+        var def = target != null ? target.businessDefinition() : "";
+
+        if (def.contains("切换失败") || def.toLowerCase().contains("handover failure")) {
+            return """
+                    ```sql
+                    -- 切换失败按小区统计 (Flink SQL, Kafka source + time window)
+                    CREATE TABLE IF NOT EXISTS handover_failure_cell_hour (
+                        cell_id STRING,
+                        window_start TIMESTAMP(3),
+                        window_end TIMESTAMP(3),
+                        failure_count BIGINT,
+                        success_count BIGINT,
+                        ho_succ_rate DOUBLE
+                    ) WITH (
+                        'connector' = 'filesystem',
+                        'path' = '/output/handover_failure_cell_hour',
+                        'format' = 'parquet'
+                    );
+
+                    INSERT INTO handover_failure_cell_hour
+                    SELECT
+                        src_cell AS cell_id,
+                        TUMBLE_START(ts, INTERVAL '1' HOUR) AS window_start,
+                        TUMBLE_END(ts, INTERVAL '1' HOUR) AS window_end,
+                        SUM(CASE WHEN result = 'failure' THEN 1 ELSE 0 END) AS failure_count,
+                        SUM(CASE WHEN result = 'success' THEN 1 ELSE 0 END) AS success_count,
+                        CAST(SUM(CASE WHEN result = 'success' THEN 1 ELSE 0 END) AS DOUBLE)
+                            / CAST(COUNT(*) AS DOUBLE) * 100 AS ho_succ_rate
+                    FROM signaling_events
+                    WHERE event_type = 'handover'
+                    GROUP BY src_cell, TUMBLE(ts, INTERVAL '1' HOUR);
+                    ```""";
+        }
+        return String.format("""
+                ```sql
+                -- %s (Flink SQL)
+                SELECT * FROM signaling_events WHERE event_type = 'handover' LIMIT 100;
+                ```""",
+                target != null ? target.name() : "output");
+    }
+
+    static String hardcodedJavaFlink(Spec spec) {
+        return "```java\n// Java Flink placeholder\n```";
     }
 }

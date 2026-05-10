@@ -82,4 +82,49 @@ class CodegenToolTest {
         assertThat(result.success()).isTrue();
         assertThat(result.data().toString()).contains("SELECT");
     }
+
+    @Test
+    void shouldGenerateFlinkSqlPrompt() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.target(new Spec.TargetSpec()
+                .name("handover_failure_by_cell")
+                .businessDefinition("按cell汇总最近1小时切换失败次数")
+                .grain("(cell_id, hour)")
+                .timeliness("streaming"));
+        spec.sources(List.of(
+                new Spec.SourceBinding()
+                        .role("signaling")
+                        .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))
+                        .confidence(0.9)
+        ));
+        spec.networkContext().kpiFamily("mobility");
+        spec.engineDecision(new Spec.EngineDecision("flink_sql", "Kafka 流式源,需时间窗口"));
+
+        var prompt = CodegenTool.buildCodegenPrompt(spec);
+        assertThat(prompt).contains("Flink SQL");
+        assertThat(prompt).contains("signaling_events");
+        assertThat(prompt).contains("flink_sql");
+    }
+
+    @Test
+    void shouldFallbackToHardcodedFlinkSqlWhenNoLlm() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.target(new Spec.TargetSpec()
+                .name("handover_test")
+                .businessDefinition("切换失败统计")
+                .grain("(cell_id, hour)"));
+        spec.sources(List.of(
+                new Spec.SourceBinding()
+                        .role("signaling")
+                        .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))
+        ));
+        spec.engineDecision(new Spec.EngineDecision("flink_sql", "Kafka流式源"));
+
+        var tool = new CodegenTool(null);
+        var result = tool.run(spec);
+        assertThat(result.success()).isTrue();
+        var code = result.data().toString();
+        assertThat(code).contains("flink_sql");
+        assertThat(code).contains("handover");
+    }
 }
