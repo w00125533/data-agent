@@ -41,11 +41,18 @@ public class AgentCore {
     public AgentCore(DeepSeekClient llmClient, Spec.TaskDirection taskDirection,
                      String hmsUri, String sparkContainer) {
         this(llmClient, taskDirection, hmsUri, sparkContainer,
-             new DomainKnowledgeBase());
+             "da-flink-jobmanager", new DomainKnowledgeBase());
     }
 
     public AgentCore(DeepSeekClient llmClient, Spec.TaskDirection taskDirection,
                      String hmsUri, String sparkContainer,
+                     DomainKnowledgeBase kb) {
+        this(llmClient, taskDirection, hmsUri, sparkContainer,
+             "da-flink-jobmanager", kb);
+    }
+
+    public AgentCore(DeepSeekClient llmClient, Spec.TaskDirection taskDirection,
+                     String hmsUri, String sparkContainer, String flinkContainer,
                      DomainKnowledgeBase kb) {
         this.llmClient = llmClient;
         this.spec = new Spec(taskDirection);
@@ -56,7 +63,7 @@ public class AgentCore {
         this.profilerTool = new ProfilerTool(cmdRunner, sparkContainer, baselineService);
         this.codegenTool = new CodegenTool(llmClient);
         this.validatorTool = new ValidatorTool();
-        this.sandboxTool = new SandboxTool(cmdRunner, sparkContainer, baselineService);
+        this.sandboxTool = new SandboxTool(cmdRunner, sparkContainer, flinkContainer, baselineService);
     }
 
     public Spec spec() { return spec; }

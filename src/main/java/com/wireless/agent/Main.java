@@ -36,6 +36,8 @@ public class Main {
                 props.getProperty("hms.uri", "thrift://hive-metastore:9083"));
         var sparkContainer = System.getenv().getOrDefault("SPARK_CONTAINER",
                 props.getProperty("spark.container", "da-spark-master"));
+        var flinkContainer = System.getenv().getOrDefault("FLINK_CONTAINER",
+                props.getProperty("flink.container", "da-flink-jobmanager"));
 
         DeepSeekClient llmClient = null;
         if (!noLlm) {
@@ -48,13 +50,14 @@ public class Main {
         }
 
         if (demo) {
-            runDemo(llmClient, hmsUri, sparkContainer);
+            runDemo(llmClient, hmsUri, sparkContainer, flinkContainer);
         } else {
-            runInteractive(llmClient, hmsUri, sparkContainer);
+            runInteractive(llmClient, hmsUri, sparkContainer, flinkContainer);
         }
     }
 
-    private static void runDemo(DeepSeekClient llmClient, String hmsUri, String sparkContainer) {
+    private static void runDemo(DeepSeekClient llmClient, String hmsUri, String sparkContainer,
+                                String flinkContainer) {
         System.out.println("=".repeat(60));
         System.out.println("M0b Demo — 无线网络感知评估 Data Agent");
         System.out.println("=".repeat(60));
@@ -66,7 +69,8 @@ public class Main {
             System.out.println("场景 " + (i + 1) + ": " + msg);
             System.out.println("─".repeat(60));
 
-            var agent = new AgentCore(llmClient, Spec.TaskDirection.FORWARD_ETL, hmsUri, sparkContainer);
+            var agent = new AgentCore(llmClient, Spec.TaskDirection.FORWARD_ETL,
+                    hmsUri, sparkContainer, flinkContainer, new com.wireless.agent.knowledge.DomainKnowledgeBase());
             var result = agent.processMessage(msg);
 
             System.out.println("  [状态] " + result.get("next_action"));
@@ -89,9 +93,11 @@ public class Main {
         System.out.println("Demo 完成。");
     }
 
-    private static void runInteractive(DeepSeekClient llmClient, String hmsUri, String sparkContainer) {
+    private static void runInteractive(DeepSeekClient llmClient, String hmsUri, String sparkContainer,
+                                      String flinkContainer) {
         System.out.println("Data Agent — 无线网络感知评估 (输入 /quit 退出)");
-        var agent = new AgentCore(llmClient, Spec.TaskDirection.FORWARD_ETL, hmsUri, sparkContainer);
+        var agent = new AgentCore(llmClient, Spec.TaskDirection.FORWARD_ETL,
+                hmsUri, sparkContainer, flinkContainer, new com.wireless.agent.knowledge.DomainKnowledgeBase());
         System.out.println("[Spec] " + agent.specSummary());
 
         var scanner = new Scanner(System.in);
