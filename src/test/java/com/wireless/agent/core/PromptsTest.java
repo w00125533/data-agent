@@ -32,4 +32,33 @@ class PromptsTest {
         var prompt = Prompts.buildClarifyPrompt(questions);
         assertThat(prompt).contains("活跃用户");
     }
+
+    @Test
+    void shouldBuildReverseExtractPromptWithPipelineCode() {
+        var prompt = Prompts.buildReverseExtractPrompt(
+                "INSERT INTO t SELECT * FROM src WHERE event='ho'",
+                "{}");
+
+        assertThat(prompt).contains("原始流水线");
+        assertThat(prompt).contains("event='ho'");
+        assertThat(prompt).contains("输入表");
+    }
+
+    @Test
+    void shouldBuildReverseClarifyPrompt() {
+        var prompt = Prompts.buildReverseClarifyPrompt("handover_failure",
+                List.of("data_scale", "anomaly_ratio"));
+
+        assertThat(prompt).contains("数据规模");
+        assertThat(prompt).contains("异常比例");
+        assertThat(prompt).contains("handover_failure");
+    }
+
+    @Test
+    void shouldHaveReverseSystemPrompt() {
+        var prompt = Prompts.REVERSE_SYNTHETIC_SYSTEM_PROMPT;
+        assertThat(prompt).contains("反向合成");
+        assertThat(prompt).contains("数据生产");
+        assertThat(prompt).contains("分布");
+    }
 }
