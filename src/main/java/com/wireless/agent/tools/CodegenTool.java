@@ -439,7 +439,7 @@ public class CodegenTool implements Tool {
                                         ? "handover" : "other";
                                     String result = RNG.nextDouble() < 0.1 ? "failure" : "success";
                                     long ts = System.currentTimeMillis() - RNG.nextInt(3600_000);
-                                    return String.format("%%s|%%s|%%s|%%d", cellId, eventType, result, ts);
+                                    return String.format("%s|%s|%s|%d", cellId, eventType, result, ts);
                                 });
 
                             synthetic.print();
