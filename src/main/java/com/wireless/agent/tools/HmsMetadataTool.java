@@ -1,6 +1,8 @@
 package com.wireless.agent.tools;
 
 import com.wireless.agent.core.Spec;
+import com.wireless.agent.knowledge.DomainKnowledgeBase;
+import com.wireless.agent.knowledge.KnowledgeEntry;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
 
@@ -13,8 +15,13 @@ public class HmsMetadataTool implements Tool {
 
     private final HiveConf conf;
     private final MockMetadataTool fallback;
+    private final DomainKnowledgeBase kb;
 
     public HmsMetadataTool(String hmsUri) {
+        this(hmsUri, null);
+    }
+
+    public HmsMetadataTool(String hmsUri, DomainKnowledgeBase kb) {
         // Ensure hadoop.home.dir is set to prevent Shell init failure on Windows
         if (System.getProperty("hadoop.home.dir") == null) {
             System.setProperty("hadoop.home.dir", "/");
@@ -33,6 +40,7 @@ public class HmsMetadataTool implements Tool {
         }
         this.conf = c;
         this.fallback = new MockMetadataTool();
+        this.kb = kb;
     }
 
     @Override
@@ -53,9 +61,10 @@ public class HmsMetadataTool implements Tool {
         }
 
         var result = tryHmsLookup(search);
-        if (result != null) return result;
-
-        return fallback.lookup(search);
+        if (result == null) {
+            result = fallback.lookup(search);
+        }
+        return enrichWithKb(result, search);
     }
 
     private ToolResult tryHmsLookup(String search) {
@@ -101,5 +110,53 @@ public class HmsMetadataTool implements Tool {
     /** Direct search with keyword matching against known tables via fallback. */
     public ToolResult search(String keyword) {
         return fallback.lookup(keyword);
+    }
+
+    /** Attach relevant domain knowledge entries to the lookup result. */
+    private ToolResult enrichWithKb(ToolResult result, String search) {
+        if (kb == null) return result;
+        var kbMatches = kb.search(search);
+        if (kbMatches.isEmpty()) return result;
+
+        var summaries = kbMatches.stream()
+                .map(KnowledgeEntry::toSummary)
+                .collect(Collectors.toList());
+
+        // Merge into result data
+        Map<String, Object> data;
+        if (result.data() instanceof Map<?, ?> d) {
+            @SuppressWarnings("unchecked")
+            var typed = (Map<String, Object>) d;
+            data = new LinkedHashMap<>(typed);
+        } else {
+            data = new LinkedHashMap<>();
+        }
+        data.put("domain_knowledge", summaries);
+
+        // Merge into evidence
+        var evidence = new LinkedHashMap<>(result.evidence());
+        evidence.put("kb_matches", kbMatches.size());
+
+        return new ToolResult(result.success(), data, result.error(), evidence);
+    }
+
+    /** Search the Domain Knowledge Base directly. */
+    public ToolResult searchKb(String query) {
+        if (kb == null) return ToolResult.fail("Domain Knowledge Base not available");
+        var matches = kb.search(query);
+        if (matches.isEmpty()) {
+            return ToolResult.fail("No KB entries found for: " + query);
+        }
+        return ToolResult.ok(
+                Map.of("query", query, "matches", matches.stream()
+                        .map(KnowledgeEntry::toSummary)
+                        .collect(Collectors.toList())),
+                Map.of("type", "kb_search", "findings", Map.of("hit_count", matches.size())));
+    }
+
+    /** Get KB prompt context for a given KPI family. */
+    public String kbPromptContext(String kpiFamily) {
+        if (kb == null) return "";
+        return kb.buildPromptContext(kpiFamily);
     }
 }

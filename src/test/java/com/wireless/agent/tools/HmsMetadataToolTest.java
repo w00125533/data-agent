@@ -41,4 +41,41 @@ class HmsMetadataToolTest {
         var tool = new HmsMetadataTool("thrift://localhost:9083");
         assertThat(tool).isInstanceOf(Tool.class);
     }
+
+    @Test
+    void shouldEnrichLookupWithDomainKnowledge() {
+        var kb = new com.wireless.agent.knowledge.DomainKnowledgeBase();
+        var tool = new HmsMetadataTool("thrift://nonexistent:9999", kb);
+        var result = tool.lookup("dw.mr_5g_15min");
+
+        assertThat(result.success()).isTrue();
+        @SuppressWarnings("unchecked")
+        var data = (Map<String, Object>) result.data();
+        var kbEntries = data.get("domain_knowledge");
+        assertThat(kbEntries).isNotNull();
+        assertThat(((List<?>) kbEntries)).isNotEmpty();
+    }
+
+    @Test
+    void shouldSearchKbDirectly() {
+        var kb = new com.wireless.agent.knowledge.DomainKnowledgeBase();
+        var tool = new HmsMetadataTool("thrift://nonexistent:9999", kb);
+        var result = tool.searchKb("弱覆盖");
+
+        assertThat(result.success()).isTrue();
+        @SuppressWarnings("unchecked")
+        var data = (Map<String, Object>) result.data();
+        var matches = (List<?>) data.get("matches");
+        assertThat(matches).isNotEmpty();
+    }
+
+    @Test
+    void shouldBuildKbPromptContext() {
+        var kb = new com.wireless.agent.knowledge.DomainKnowledgeBase();
+        var tool = new HmsMetadataTool("thrift://nonexistent:9999", kb);
+        var context = tool.kbPromptContext("coverage");
+
+        assertThat(context).isNotBlank();
+        assertThat(context).contains("Domain Knowledge Base");
+    }
 }
