@@ -63,4 +63,41 @@ class SandboxToolTest {
         assertThat(result).isNotNull();
         assertThat(result).containsKey("next_action");
     }
+
+    @Test
+    void shouldRewriteSqlForBaseline() {
+        var runner = new DockerCommandRunner();
+        var baseline = new BaselineService(runner, "da-spark-master");
+        baseline.recordBaseline("dw.mr_5g_15min", "baseline.dw__mr_5g_15min",
+                1, Map.of("row_count", 1000));
+        var tool = new SandboxTool(runner, "da-spark-master", baseline);
+
+        var spec = new com.wireless.agent.core.Spec(com.wireless.agent.core.Spec.TaskDirection.FORWARD_ETL);
+        spec.sources(java.util.List.of(
+            new com.wireless.agent.core.Spec.SourceBinding().role("mr")
+                .binding(Map.of("catalog", "hive", "table_or_topic", "dw.mr_5g_15min"))
+        ));
+
+        var sql = "SELECT * FROM dw.mr_5g_15min WHERE rsrp_avg < -110;";
+        var rewritten = tool.rewriteForBaseline(sql, spec);
+        assertThat(rewritten).contains("baseline.dw__mr_5g_15min");
+        assertThat(rewritten).doesNotContain("dw.mr_5g_15min");
+    }
+
+    @Test
+    void shouldNotRewriteWhenNoBaseline() {
+        var runner = new DockerCommandRunner();
+        var baseline = new BaselineService(runner, "da-spark-master");
+        var tool = new SandboxTool(runner, "da-spark-master", baseline);
+
+        var spec = new com.wireless.agent.core.Spec(com.wireless.agent.core.Spec.TaskDirection.FORWARD_ETL);
+        spec.sources(java.util.List.of(
+            new com.wireless.agent.core.Spec.SourceBinding().role("mr")
+                .binding(Map.of("catalog", "hive", "table_or_topic", "dw.mr_5g_15min"))
+        ));
+
+        var sql = "SELECT * FROM dw.mr_5g_15min;";
+        var rewritten = tool.rewriteForBaseline(sql, spec);
+        assertThat(rewritten).isEqualTo(sql); // No rewrite
+    }
 }

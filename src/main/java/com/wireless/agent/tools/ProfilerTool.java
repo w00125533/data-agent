@@ -11,10 +11,16 @@ public class ProfilerTool implements Tool {
 
     private final DockerCommandRunner runner;
     private final String sparkContainer;
+    private final BaselineService baselineService;
 
     public ProfilerTool(DockerCommandRunner runner, String sparkContainer) {
+        this(runner, sparkContainer, null);
+    }
+
+    public ProfilerTool(DockerCommandRunner runner, String sparkContainer, BaselineService baselineService) {
         this.runner = runner;
         this.sparkContainer = sparkContainer;
+        this.baselineService = baselineService;
     }
 
     @Override
@@ -37,7 +43,9 @@ public class ProfilerTool implements Tool {
             if (!tbl.isEmpty()) {
                 // Pass the resolved schema from Spec (already fetched by HmsMetadataTool)
                 var schema = src.schema_();
-                var profile = profileTable(tbl, 5, schema);
+                // Prefer baseline if available
+                var queryTbl = baselineService != null ? baselineService.resolveTable(tbl) : tbl;
+                var profile = profileTable(queryTbl, 5, schema);
                 results.put(tbl, profile.data());
             }
         }

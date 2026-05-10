@@ -50,4 +50,26 @@ class ProfilerToolTest {
         assertThat(sql).contains("`empty_table`");
         assertThat(sql).contains("SELECT *");
     }
+
+    @Test
+    void shouldPreferBaselineTableWhenAvailable() {
+        var runner = new DockerCommandRunner();
+        var baseline = new BaselineService(runner, "da-spark-master");
+        baseline.recordBaseline("dw.mr_5g_15min", "baseline.dw__mr_5g_15min",
+                1, Map.of("row_count", 1000));
+        var tool = new ProfilerTool(runner, "da-spark-master", baseline);
+
+        var resolved = baseline.resolveTable("dw.mr_5g_15min");
+        assertThat(resolved).isEqualTo("baseline.dw__mr_5g_15min");
+    }
+
+    @Test
+    void shouldFallbackToOriginalTableWhenNoBaseline() {
+        var runner = new DockerCommandRunner();
+        var baseline = new BaselineService(runner, "da-spark-master");
+        var tool = new ProfilerTool(runner, "da-spark-master", baseline);
+
+        var resolved = baseline.resolveTable("unknown.table");
+        assertThat(resolved).isEqualTo("unknown.table");
+    }
 }

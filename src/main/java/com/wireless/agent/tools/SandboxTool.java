@@ -13,10 +13,16 @@ public class SandboxTool implements Tool {
 
     private final DockerCommandRunner runner;
     private final String sparkContainer;
+    private final BaselineService baselineService;
 
     public SandboxTool(DockerCommandRunner runner, String sparkContainer) {
+        this(runner, sparkContainer, null);
+    }
+
+    public SandboxTool(DockerCommandRunner runner, String sparkContainer, BaselineService baselineService) {
         this.runner = runner;
         this.sparkContainer = sparkContainer;
+        this.baselineService = baselineService;
     }
 
     @Override
@@ -44,6 +50,7 @@ public class SandboxTool implements Tool {
         }
 
         sql = ensureLimit(sql, 100);
+        sql = rewriteForBaseline(sql, spec);
 
         try {
             var result = runner.exec(sparkContainer,
@@ -86,6 +93,20 @@ public class SandboxTool implements Tool {
             trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
         }
         return "SELECT * FROM (" + trimmed + ") _preview LIMIT " + limit + ";";
+    }
+
+    /** Rewrite SQL to use baseline tables when available. */
+    public String rewriteForBaseline(String sql, Spec spec) {
+        if (baselineService == null) return sql;
+        var rewritten = sql;
+        for (var src : spec.sources()) {
+            var tbl = src.binding().getOrDefault("table_or_topic", "").toString();
+            if (!tbl.isEmpty() && baselineService.hasBaseline(tbl)) {
+                var baselineTbl = baselineService.resolveTable(tbl);
+                rewritten = rewritten.replace(tbl, baselineTbl);
+            }
+        }
+        return rewritten;
     }
 
     private String specSummaryBrief(Spec spec) {
