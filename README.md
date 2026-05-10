@@ -128,3 +128,21 @@ mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo"
 | 全 Hive 批源 | `spark_sql` |
 
 **Hardcoded fallbacks** for all three engines when LLM is unavailable (demo mode).
+
+## M4 -- Reverse Synthetic Data Pipeline
+
+**REVERSE_SYNTHETIC task direction** generates test data for existing pipelines:
+
+| Step | Description |
+|------|-------------|
+| 1. Parse | Extracts input schemas and constraints from user-pasted pipeline code |
+| 2. Clarify | Asks about data scale (1k–100M rows), anomaly ratio (1–10%), distribution learning |
+| 3. Codegen | Generates data production code: SQL INSERT or Java Flink DataStream generator |
+| 4. Dual Dry-Run | Step 1: Run generated code to produce test data; Step 2: Feed data into original pipeline to verify |
+
+**Usage:**
+```bash
+mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo --no-llm --reverse"
+```
+
+**Example:** Paste a Flink SQL pipeline, and the agent generates a Java Flink data generator with configurable NUM_ROWS and ANOMALY_RATIO.
