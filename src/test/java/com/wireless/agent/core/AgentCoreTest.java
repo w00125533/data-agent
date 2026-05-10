@@ -118,4 +118,20 @@ class AgentCoreTest {
         agent.processMessage("5G_SA");
         assertThat(agent.spec().networkContext().rat()).isEqualTo("5G_SA");
     }
+
+    @Test
+    void shouldHaveDomainKnowledgeBaseInjected() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master");
+        assertThat(agent.kb()).isNotNull();
+        assertThat(agent.kb().all()).isNotEmpty();
+    }
+
+    @Test
+    void shouldHaveBaselineServiceInjected() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master");
+        assertThat(agent.baselineService()).isNotNull();
+        assertThat(agent.baselineService().name()).isEqualTo("baseline");
+    }
 }

@@ -120,4 +120,59 @@ class IntegrationTest {
         assertThat(result).containsKey("warnings");
         assertThat(result).containsKey("preview");
     }
+
+    @Test
+    void shouldProcessCoverageTaskWithDomainKnowledge() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master");
+
+        var result = agent.processMessage("近7天每个区县5G弱覆盖小区清单，RSRP<-110dBm占比>30%");
+
+        assertThat(result.get("next_action"))
+                .isIn("code_done", "dry_run_ok", "sandbox_failed");
+        assertThat(result.get("code").toString()).isNotEmpty();
+
+        var kbHits = agent.kb().search("弱覆盖");
+        assertThat(kbHits).isNotEmpty();
+        assertThat(kbHits.get(0).name()).contains("弱覆盖");
+    }
+
+    @Test
+    void shouldProcessMobilityTaskWithDomainKnowledge() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master");
+
+        var result = agent.processMessage("按cell汇总最近切换失败原因分布，包括早切晚切");
+
+        assertThat(result.get("next_action"))
+                .isIn("code_done", "dry_run_ok", "sandbox_failed");
+        assertThat(result.get("code").toString()).isNotEmpty();
+
+        var kbHits = agent.kb().search("早切");
+        assertThat(kbHits).isNotEmpty();
+    }
+
+    @Test
+    void shouldCreateBaselineAndPreferItForDryRun() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master");
+        var baseline = agent.baselineService();
+
+        baseline.recordBaseline("dw.mr_5g_15min", "baseline.dw__mr_5g_15min",
+                1, Map.of("row_count", 1000));
+
+        assertThat(baseline.hasBaseline("dw.mr_5g_15min")).isTrue();
+        assertThat(baseline.resolveTable("dw.mr_5g_15min"))
+                .isEqualTo("baseline.dw__mr_5g_15min");
+    }
+
+    @Test
+    void shouldNotHaveBaselineForUnknownTable() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master");
+        var baseline = agent.baselineService();
+
+        assertThat(baseline.hasBaseline("unknown.table")).isFalse();
+        assertThat(baseline.resolveTable("unknown.table")).isEqualTo("unknown.table");
+    }
 }
