@@ -15,9 +15,23 @@ public class HmsMetadataTool implements Tool {
     private final MockMetadataTool fallback;
 
     public HmsMetadataTool(String hmsUri) {
-        this.conf = new HiveConf();
-        conf.set("hive.metastore.uris", hmsUri);
-        conf.set("hive.metastore.client.capability.check", "false");
+        // Ensure hadoop.home.dir is set to prevent Shell init failure on Windows
+        if (System.getProperty("hadoop.home.dir") == null) {
+            System.setProperty("hadoop.home.dir", "/");
+        }
+        HiveConf c = null;
+        try {
+            c = new HiveConf();
+            c.set("hive.metastore.uris", hmsUri);
+            c.set("hive.metastore.client.capability.check", "false");
+            c.set("hive.metastore.client.socket.timeout", "3000");
+            c.set("hive.metastore.connect.retries", "1");
+            c.set("hive.metastore.failure.retries", "0");
+        } catch (Throwable e) {
+            // HiveConf init may fail on Windows without HADOOP_HOME;
+            // fallback to MockMetadataTool below.
+        }
+        this.conf = c;
         this.fallback = new MockMetadataTool();
     }
 
@@ -45,6 +59,7 @@ public class HmsMetadataTool implements Tool {
     }
 
     private ToolResult tryHmsLookup(String search) {
+        if (conf == null) return null;
         try (var client = new HiveMetaStoreClient(conf)) {
             var parts = search.split("\\.");
             if (parts.length >= 2) {

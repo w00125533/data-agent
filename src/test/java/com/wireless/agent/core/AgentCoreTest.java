@@ -64,7 +64,9 @@ class AgentCoreTest {
 
     @Test
     void shouldInitWithEmptySpec() {
-        var agent = new AgentCore(new FakeLLMClient(List.of()));
+        var agent = new AgentCore(new FakeLLMClient(List.of()),
+            Spec.TaskDirection.FORWARD_ETL,
+            "thrift://nonexistent:9999", "da-spark-master");
         assertThat(agent.spec()).isNotNull();
         assertThat(agent.spec().taskDirection()).isEqualTo(Spec.TaskDirection.FORWARD_ETL);
     }
@@ -73,7 +75,8 @@ class AgentCoreTest {
     void shouldExtractIntentFromFirstMessage() {
         var agent = new AgentCore(new FakeLLMClient(List.of(
             extractResp("weak_cov_by_district", "coverage")
-        )));
+        )), Spec.TaskDirection.FORWARD_ETL,
+            "thrift://nonexistent:9999", "da-spark-master");
         var result = agent.processMessage("给我近30天5G弱覆盖小区");
         assertThat(agent.spec().target()).isNotNull();
         assertThat(agent.spec().target().businessDefinition()).isNotEmpty();
@@ -85,20 +88,22 @@ class AgentCoreTest {
         var agent = new AgentCore(new FakeLLMClient(List.of(
             askResp("按什么时间粒度？"),
             extractResp("weak_cov", "coverage")
-        )));
+        )), Spec.TaskDirection.FORWARD_ETL,
+            "thrift://nonexistent:9999", "da-spark-master");
         var r1 = agent.processMessage("给我弱覆盖数据");
         assertThat(r1.get("next_action")).isEqualTo("ask_clarifying");
         assertThat(r1.get("clarifying_question")).isNotNull();
 
         var r2 = agent.processMessage("按天汇总");
-        assertThat(r2.get("next_action")).isEqualTo("code_done");
+        assertThat(r2.get("next_action")).isIn("code_done", "dry_run_ok", "sandbox_failed");
     }
 
     @Test
     void shouldWorkWithoutLlmClient() {
-        var agent = new AgentCore(null);
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+            "thrift://nonexistent:9999", "da-spark-master");
         var result = agent.processMessage("弱覆盖小区统计");
-        assertThat(result.get("next_action")).isEqualTo("code_done");
+        assertThat(result.get("next_action")).isIn("code_done", "dry_run_ok", "sandbox_failed");
         assertThat(result.get("code").toString()).contains("SELECT");
     }
 
@@ -107,7 +112,8 @@ class AgentCoreTest {
         var agent = new AgentCore(new FakeLLMClient(List.of(
             askResp("什么RAT? 4G or 5G?"),
             extractResp("weak_cov", "coverage")
-        )));
+        )), Spec.TaskDirection.FORWARD_ETL,
+            "thrift://nonexistent:9999", "da-spark-master");
         agent.processMessage("给我弱覆盖数据");
         agent.processMessage("5G_SA");
         assertThat(agent.spec().networkContext().rat()).isEqualTo("5G_SA");

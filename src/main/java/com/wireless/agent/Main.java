@@ -1,6 +1,7 @@
 package com.wireless.agent;
 
 import com.wireless.agent.core.AgentCore;
+import com.wireless.agent.core.Spec;
 import com.wireless.agent.llm.DeepSeekClient;
 
 import java.util.List;
@@ -50,7 +51,9 @@ public class Main {
             System.out.println("场景 " + (i + 1) + ": " + msg);
             System.out.println("─".repeat(60));
 
-            var agent = new AgentCore(llmClient);
+            var hmsUri = System.getenv().getOrDefault("HMS_URI", "thrift://hive-metastore:9083");
+            var sparkContainer = System.getenv().getOrDefault("SPARK_CONTAINER", "da-spark-master");
+            var agent = new AgentCore(llmClient, Spec.TaskDirection.FORWARD_ETL, hmsUri, sparkContainer);
             var result = agent.processMessage(msg);
 
             System.out.println("  [状态] " + result.get("next_action"));
@@ -75,7 +78,9 @@ public class Main {
 
     private static void runInteractive(DeepSeekClient llmClient) {
         System.out.println("Data Agent — 无线网络感知评估 (输入 /quit 退出)");
-        var agent = new AgentCore(llmClient);
+        var hmsUri = System.getenv().getOrDefault("HMS_URI", "thrift://hive-metastore:9083");
+        var sparkContainer = System.getenv().getOrDefault("SPARK_CONTAINER", "da-spark-master");
+        var agent = new AgentCore(llmClient, Spec.TaskDirection.FORWARD_ETL, hmsUri, sparkContainer);
         System.out.println("[Spec] " + agent.specSummary());
 
         var scanner = new Scanner(System.in);

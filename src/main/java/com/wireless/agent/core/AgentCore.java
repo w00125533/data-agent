@@ -4,8 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.wireless.agent.llm.DeepSeekClient;
-import com.wireless.agent.tools.CodegenTool;
-import com.wireless.agent.tools.MockMetadataTool;
+import com.wireless.agent.tools.*;
 
 import java.util.*;
 
@@ -16,19 +15,34 @@ public class AgentCore {
 
     private final DeepSeekClient llmClient;
     private final Spec spec;
-    private final MockMetadataTool metadataTool;
+    private final HmsMetadataTool metadataTool;
+    private final ProfilerTool profilerTool;
     private final CodegenTool codegenTool;
+    private final ValidatorTool validatorTool;
+    private final SandboxTool sandboxTool;
+    private final DockerCommandRunner cmdRunner;
     private int turn;
 
     public AgentCore(DeepSeekClient llmClient) {
-        this(llmClient, Spec.TaskDirection.FORWARD_ETL);
+        this(llmClient, Spec.TaskDirection.FORWARD_ETL,
+             "thrift://hive-metastore:9083", "da-spark-master");
     }
 
     public AgentCore(DeepSeekClient llmClient, Spec.TaskDirection taskDirection) {
+        this(llmClient, taskDirection,
+             "thrift://hive-metastore:9083", "da-spark-master");
+    }
+
+    public AgentCore(DeepSeekClient llmClient, Spec.TaskDirection taskDirection,
+                     String hmsUri, String sparkContainer) {
         this.llmClient = llmClient;
         this.spec = new Spec(taskDirection);
-        this.metadataTool = new MockMetadataTool();
+        this.cmdRunner = new DockerCommandRunner();
+        this.metadataTool = new HmsMetadataTool(hmsUri);
+        this.profilerTool = new ProfilerTool(cmdRunner, sparkContainer);
         this.codegenTool = new CodegenTool(llmClient);
+        this.validatorTool = new ValidatorTool();
+        this.sandboxTool = new SandboxTool(cmdRunner, sparkContainer);
     }
 
     public Spec spec() { return spec; }
@@ -177,6 +191,7 @@ public class AgentCore {
     }
 
     private Map<String, Object> executeTools() {
+        // 1. Metadata lookup — fill schema for each source
         for (var src : spec.sources()) {
             if (src.schema_() == null || src.schema_().isEmpty()) {
                 var tbl = src.binding().getOrDefault("table_or_topic", "").toString();
@@ -192,30 +207,68 @@ public class AgentCore {
             }
         }
 
+        // 2. Profiler — sample data for evidence
+        var profileResult = profilerTool.run(spec);
+        if (profileResult.success()) {
+            @SuppressWarnings("unchecked")
+            var evidence = (Map<String, Object>) profileResult.data();
+            spec.evidence().add(new Spec.Evidence("data_profile",
+                    spec.sources().stream()
+                            .map(s -> s.binding().getOrDefault("table_or_topic", "").toString())
+                            .filter(t -> !t.isEmpty())
+                            .findFirst().orElse("unknown"),
+                    evidence));
+        }
+
+        // 3. Engine selection
         if (spec.engineDecision() == null || spec.engineDecision().recommended().isEmpty()) {
             spec.engineDecision(EngineSelector.select(spec));
         }
 
-        var result = codegenTool.run(spec);
-        if (result.success()) {
-            spec.state(Spec.SpecState.CODEGEN_DONE);
-            @SuppressWarnings("unchecked")
-            var data = (Map<String, Object>) result.data();
+        // 4. Codegen
+        var codegenResult = codegenTool.run(spec);
+        if (!codegenResult.success()) {
             return Map.of(
-                "next_action", "code_done",
-                "clarifying_question", "",
-                "code", data.getOrDefault("code", ""),
-                "engine", spec.engineDecision().recommended(),
-                "reasoning", spec.engineDecision().reasoning(),
+                "next_action", "ask_clarifying",
+                "clarifying_question", "代码生成出错: " + codegenResult.error(),
+                "code", "",
                 "spec_summary", specSummary()
             );
         }
-        return Map.of(
-            "next_action", "ask_clarifying",
-            "clarifying_question", "代码生成出错: " + result.error(),
-            "code", "",
-            "spec_summary", specSummary()
-        );
+        @SuppressWarnings("unchecked")
+        var codegenData = (Map<String, Object>) codegenResult.data();
+        var code = codegenData.getOrDefault("code", "").toString();
+
+        // 5. Validate
+        var validation = validatorTool.validate(code, spec);
+        if (!validation.success()) {
+            return Map.of(
+                "next_action", "ask_clarifying",
+                "clarifying_question", "SQL 校验失败: " + validation.error(),
+                "code", code,
+                "spec_summary", specSummary()
+            );
+        }
+        @SuppressWarnings("unchecked")
+        var validationData = (Map<String, Object>) validation.data();
+        @SuppressWarnings("unchecked")
+        var warnings = (List<String>) validationData.get("warnings");
+
+        // 6. Sandbox dry-run
+        var dryRunResult = sandboxTool.dryRun(code, spec);
+
+        spec.state(Spec.SpecState.CODEGEN_DONE);
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("next_action", dryRunResult.getOrDefault("next_action", "code_done"));
+        response.put("code", code);
+        response.put("engine", spec.engineDecision().recommended());
+        response.put("reasoning", spec.engineDecision().reasoning());
+        response.put("spec_summary", specSummary());
+        response.put("warnings", warnings != null ? warnings : List.of());
+        response.put("preview", dryRunResult.getOrDefault("preview", ""));
+        response.put("error", dryRunResult.getOrDefault("error", ""));
+        return response;
     }
 
     public String specSummary() {
