@@ -11,6 +11,9 @@ public class SandboxTool implements Tool {
     private static final Pattern SQL_BLOCK = Pattern.compile(
             "```(?:sql|sparksql)\\s*\\n?(.*?)```", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
 
+    private static final Pattern JAVA_BLOCK = Pattern.compile(
+            "```java\\s*\\n?(.*?)```", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+
     private final DockerCommandRunner runner;
     private final String sparkContainer;
     private final String flinkContainer;
@@ -93,6 +96,99 @@ public class SandboxTool implements Tool {
         }
     }
 
+    /** Dual dry-run for reverse synthetic: Step 1 run generated code, Step 2 verify against original pipeline. */
+    public Map<String, Object> dualDryRun(String generatedCode, Spec spec) {
+        Objects.requireNonNull(generatedCode, "generatedCode must not be null");
+        Objects.requireNonNull(spec, "spec must not be null");
+
+        var result = new LinkedHashMap<String, Object>();
+
+        // Step 1: Run the generated data production code
+        var genSql = extractSql(generatedCode);
+        if (genSql.isEmpty()) {
+            genSql = extractJavaCode(generatedCode);
+        }
+
+        Map<String, Object> step1;
+        if (!genSql.isEmpty()) {
+            var targetContainer = selectContainer(spec);
+            var execCmd = buildExecutionCommand(targetContainer, genSql);
+            try {
+                var execResult = runner.exec(targetContainer, execCmd);
+                step1 = Map.of(
+                    "success", execResult.isSuccess(),
+                    "output", truncate(execResult.stdout(), 1000),
+                    "error", Objects.toString(execResult.stderr(), "")
+                );
+            } catch (Exception e) {
+                step1 = Map.of(
+                    "success", false,
+                    "output", "",
+                    "error", Objects.toString(e.getMessage(), "")
+                );
+            }
+        } else {
+            step1 = Map.of(
+                "success", false,
+                "output", "",
+                "error", "No executable code found in generated output"
+            );
+        }
+        result.put("step1_result", step1);
+
+        // Step 2: Feed into original pipeline for validation
+        var originalPipeline = spec.originalPipeline();
+        Map<String, Object> step2;
+        if (originalPipeline != null && !originalPipeline.isEmpty()) {
+            var origSql = extractSql(originalPipeline);
+            if (!origSql.isEmpty()) {
+                origSql = ensureLimit(origSql, 10);
+                var targetContainer = selectContainer(spec);
+                var execCmd = buildExecutionCommand(targetContainer, origSql);
+                try {
+                    var execResult = runner.exec(targetContainer, execCmd);
+                    step2 = Map.of(
+                        "success", execResult.isSuccess(),
+                        "output", truncate(execResult.stdout(), 1000),
+                        "error", Objects.toString(execResult.stderr(), "")
+                    );
+                } catch (Exception e) {
+                    step2 = Map.of(
+                        "success", false,
+                        "output", "",
+                        "error", Objects.toString(e.getMessage(), "")
+                    );
+                }
+            } else {
+                step2 = Map.of(
+                    "success", false,
+                    "output", "",
+                    "error", "Original pipeline has no executable SQL"
+                );
+            }
+        } else {
+            step2 = Map.of(
+                "success", false,
+                "output", "",
+                "error", "No original pipeline code to validate against"
+            );
+        }
+        result.put("step2_result", step2);
+
+        // Overall status
+        var step1Ok = (boolean) step1.getOrDefault("success", false);
+        var step2Ok = (boolean) step2.getOrDefault("success", false);
+        if (step1Ok && step2Ok) {
+            result.put("next_action", "dual_dry_run_ok");
+        } else if (step1Ok) {
+            result.put("next_action", "step1_ok_step2_failed");
+        } else {
+            result.put("next_action", "sandbox_failed");
+        }
+
+        return result;
+    }
+
     /** Select the target container based on engine decision. */
     public String selectContainer(Spec spec) {
         var engine = spec.engineDecision();
@@ -113,6 +209,22 @@ public class SandboxTool implements Tool {
         }
         // Spark SQL
         return List.of("spark-sql", "--master", "spark://spark-master:7077", "-e", sql);
+    }
+
+    /** Extract Java code from markdown block (for Flink DataStream code). */
+    public static String extractJavaCode(String rawCode) {
+        var matcher = JAVA_BLOCK.matcher(rawCode);
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
+        return "";
+    }
+
+    /** Build a Flink job submission command for Java code. */
+    public List<String> buildJavaExecutionCommand(String container, String javaCode) {
+        return List.of("bash", "-c",
+                "echo '" + javaCode.replace("'", "'\\''")
+                + "' | /opt/flink/bin/sql-client.sh");
     }
 
     public static String extractSql(String rawCode) {

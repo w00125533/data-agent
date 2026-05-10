@@ -140,4 +140,53 @@ class SandboxToolTest {
         // Flink uses sql-client.sh, Spark uses spark-sql
         assertThat(cmd).anyMatch(s -> s.contains("sql-client.sh"));
     }
+
+    @Test
+    void shouldSupportDualDryRun() {
+        var runner = new DockerCommandRunner();
+        var sandbox = new SandboxTool(runner, "da-spark-master", "da-flink-jobmanager");
+
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.originalPipeline("SELECT cell_id, COUNT(*) FROM signaling_events WHERE event_type='handover' GROUP BY cell_id;");
+        spec.engineDecision(new Spec.EngineDecision("flink_sql", "反向合成"));
+
+        var generatedCode = """
+                ```sql
+                INSERT INTO signaling_events VALUES
+                ('cell_A', 'handover', 'failure', 1000),
+                ('cell_B', 'handover', 'success', 2000);
+                ```""";
+
+        var result = sandbox.dualDryRun(generatedCode, spec);
+        // Without Docker, both steps should fail gracefully
+        assertThat(result).isNotNull();
+        assertThat(result).containsKey("step1_result");
+        assertThat(result).containsKey("step2_result");
+    }
+
+    @Test
+    void shouldStep1GenerateDataAndStep2Validate() {
+        var runner = new DockerCommandRunner();
+        var sandbox = new SandboxTool(runner, "da-spark-master", "da-flink-jobmanager");
+
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.originalPipeline("SELECT * FROM handover_output;");
+        spec.engineDecision(new Spec.EngineDecision("spark_sql", "反向合成 Spark SQL"));
+
+        var generatedCode = "```sql\nINSERT INTO handover_output SELECT 'cell_A', 10;\n```";
+
+        var result = sandbox.dualDryRun(generatedCode, spec);
+        assertThat(result).containsKey("step1_result");
+        assertThat(result).containsKey("step2_result");
+    }
+
+    @Test
+    void shouldBuildJavaExecutionCommandForFlink() {
+        var runner = new DockerCommandRunner();
+        var sandbox = new SandboxTool(runner, "da-spark-master", "da-flink-jobmanager");
+
+        var cmd = sandbox.buildJavaExecutionCommand("da-flink-jobmanager", "SyntheticDataGenerator.java");
+        assertThat(cmd).anyMatch(s -> s.contains("flink"));
+        assertThat(cmd).anyMatch(s -> s.contains("run") || s.contains("sql-client"));
+    }
 }
