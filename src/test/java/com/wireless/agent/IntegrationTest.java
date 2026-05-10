@@ -230,4 +230,51 @@ class IntegrationTest {
         assertThat(EngineSelector.select(javaFlinkSpec).recommended())
                 .isEqualTo("java_flink_streamapi");
     }
+
+    @Test
+    void shouldProcessReverseSyntheticTaskWithPastedPipeline() {
+        var agent = new AgentCore(null, Spec.TaskDirection.REVERSE_SYNTHETIC,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+
+        var result = agent.processMessage(
+                "INSERT INTO handover_kpi " +
+                "SELECT cell_id, COUNT(*) AS failure_count " +
+                "FROM signaling_events " +
+                "WHERE event_type = 'handover' AND result = 'failure' " +
+                "GROUP BY cell_id;");
+
+        assertThat(result.get("next_action"))
+                .isIn("ask_clarifying", "code_done", "dry_run_ok",
+                      "dual_dry_run_ok", "step1_ok_step2_failed", "sandbox_failed");
+        var code = result.get("code").toString();
+        assertThat(code).isNotEmpty();
+        // Reverse synthetic should generate data production code (INSERT or Java generator)
+        assertThat(code.toLowerCase()).containsAnyOf("insert", "generator", "synthetic");
+    }
+
+    @Test
+    void shouldStoreOriginalPipelineInSpec() {
+        var agent = new AgentCore(null, Spec.TaskDirection.REVERSE_SYNTHETIC,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+
+        var pipelineCode = "SELECT * FROM signaling_events WHERE event_type='handover';";
+        agent.processMessage(pipelineCode);
+
+        assertThat(agent.spec().originalPipeline()).isEqualTo(pipelineCode);
+    }
+
+    @Test
+    void shouldVerifyReverseEngineSelection() {
+        // REVERSE_SYNTHETIC with Kafka source -> java_flink_streamapi
+        var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
+        spec.sources(List.of(new Spec.SourceBinding().role("stream")
+                .binding(Map.of("catalog", "kafka", "table_or_topic", "signaling_events"))));
+        spec.target(new Spec.TargetSpec().name("test").businessDefinition("生成测试数据"));
+
+        var decision = EngineSelector.select(spec);
+        assertThat(decision.recommended()).isEqualTo("java_flink_streamapi");
+        assertThat(decision.reasoning()).contains("反向合成");
+    }
 }
