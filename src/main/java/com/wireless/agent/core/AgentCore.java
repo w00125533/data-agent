@@ -3,6 +3,7 @@ package com.wireless.agent.core;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.wireless.agent.knowledge.DomainKnowledgeBase;
 import com.wireless.agent.llm.DeepSeekClient;
 import com.wireless.agent.tools.*;
 
@@ -15,6 +16,8 @@ public class AgentCore {
 
     private final DeepSeekClient llmClient;
     private final Spec spec;
+    private final DomainKnowledgeBase kb;
+    private final BaselineService baselineService;
     private final HmsMetadataTool metadataTool;
     private final ProfilerTool profilerTool;
     private final CodegenTool codegenTool;
@@ -25,24 +28,35 @@ public class AgentCore {
 
     public AgentCore(DeepSeekClient llmClient) {
         this(llmClient, Spec.TaskDirection.FORWARD_ETL,
-             "thrift://hive-metastore:9083", "da-spark-master");
+             "thrift://hive-metastore:9083", "da-spark-master",
+             new DomainKnowledgeBase());
     }
 
     public AgentCore(DeepSeekClient llmClient, Spec.TaskDirection taskDirection) {
         this(llmClient, taskDirection,
-             "thrift://hive-metastore:9083", "da-spark-master");
+             "thrift://hive-metastore:9083", "da-spark-master",
+             new DomainKnowledgeBase());
     }
 
     public AgentCore(DeepSeekClient llmClient, Spec.TaskDirection taskDirection,
                      String hmsUri, String sparkContainer) {
+        this(llmClient, taskDirection, hmsUri, sparkContainer,
+             new DomainKnowledgeBase());
+    }
+
+    public AgentCore(DeepSeekClient llmClient, Spec.TaskDirection taskDirection,
+                     String hmsUri, String sparkContainer,
+                     DomainKnowledgeBase kb) {
         this.llmClient = llmClient;
         this.spec = new Spec(taskDirection);
         this.cmdRunner = new DockerCommandRunner();
-        this.metadataTool = new HmsMetadataTool(hmsUri);
-        this.profilerTool = new ProfilerTool(cmdRunner, sparkContainer);
+        this.kb = kb;
+        this.baselineService = new BaselineService(cmdRunner, sparkContainer);
+        this.metadataTool = new HmsMetadataTool(hmsUri, kb);
+        this.profilerTool = new ProfilerTool(cmdRunner, sparkContainer, baselineService);
         this.codegenTool = new CodegenTool(llmClient);
         this.validatorTool = new ValidatorTool();
-        this.sandboxTool = new SandboxTool(cmdRunner, sparkContainer);
+        this.sandboxTool = new SandboxTool(cmdRunner, sparkContainer, baselineService);
     }
 
     public Spec spec() { return spec; }
@@ -84,9 +98,15 @@ public class AgentCore {
         }
         try {
             var currentJson = MAPPER.writeValueAsString(spec);
+            var systemPrompt = Prompts.SYSTEM_PROMPT;
+            // Inject KB context for the current KPI family
+            var kbContext = metadataTool.kbPromptContext(spec.networkContext().kpiFamily());
+            if (!kbContext.isEmpty()) {
+                systemPrompt = systemPrompt + "\n\n" + kbContext;
+            }
             var prompt = Prompts.buildExtractSpecPrompt(userMessage, currentJson);
             var messages = List.of(
-                Map.of("role", "system", "content", Prompts.SYSTEM_PROMPT),
+                Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", prompt)
             );
             var response = llmClient.chat(messages);
@@ -284,6 +304,9 @@ public class AgentCore {
         parts.add("状态: " + spec.state().value());
         return String.join(" | ", parts);
     }
+
+    public DomainKnowledgeBase kb() { return kb; }
+    public BaselineService baselineService() { return baselineService; }
 
     private static boolean containsAny(String text, String... keywords) {
         for (var kw : keywords) {
