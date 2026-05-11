@@ -1,0 +1,82 @@
+[
+  {
+    "id": "eval-rev-001",
+    "category": "reverse",
+    "direction": "reverse_synthetic",
+    "engine": "java_flink_streamapi",
+    "nl_input": "INSERT INTO handover_kpi SELECT cell_id, COUNT(*) AS failure_count FROM signaling_events WHERE event_type = 'handover' AND result = 'failure' GROUP BY cell_id;",
+    "expected_spec": {
+      "target_name": "synthetic_test_data",
+      "kpi_family": "synthetic",
+      "sources": ["signaling_events"]
+    },
+    "expected_code_patterns": ["INSERT", "generator", "synthetic"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-rev-002",
+    "category": "reverse",
+    "direction": "reverse_synthetic",
+    "engine": "java_flink_streamapi",
+    "nl_input": "DROP TABLE IF EXISTS coverage_kpi; CREATE TABLE coverage_kpi AS SELECT e.district, COUNT(DISTINCT m.cell_id) AS weak_count FROM dw.mr_5g_15min m JOIN dim.engineering_param e ON m.cell_id = e.cell_id WHERE m.rsrp_avg < -110 GROUP BY e.district;",
+    "expected_spec": {
+      "target_name": "synthetic_test_data",
+      "kpi_family": "synthetic",
+      "sources": ["dw.mr_5g_15min", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["generator", "INSERT", "synthetic", "rsrp"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-rev-003",
+    "category": "reverse",
+    "direction": "reverse_synthetic",
+    "engine": "java_flink_streamapi",
+    "nl_input": "INSERT INTO qoe_kpi SELECT cell_id, AVG(tcp_retrans_rate) AS avg_retrans FROM dw.qoe_user_cell WHERE timestamp > now() - INTERVAL 7 DAY GROUP BY cell_id HAVING AVG(tcp_retrans_rate) > 0.15;",
+    "expected_spec": {
+      "target_name": "synthetic_test_data",
+      "kpi_family": "synthetic",
+      "sources": ["dw.qoe_user_cell"]
+    },
+    "expected_code_patterns": ["generator", "INSERT", "tcp"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-rev-004",
+    "category": "reverse",
+    "direction": "reverse_synthetic",
+    "engine": "java_flink_streamapi",
+    "nl_input": "需要覆盖正常切换/早切/晚切三种场景的测试数据，数据量1万行，异常率10%",
+    "expected_spec": {
+      "target_name": "synthetic_test_data",
+      "kpi_family": "synthetic",
+      "sources": ["signaling_events"]
+    },
+    "expected_code_patterns": ["generator", "early", "late", "NUM_ROWS"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-rev-005",
+    "category": "reverse",
+    "direction": "reverse_synthetic",
+    "engine": "java_flink_streamapi",
+    "nl_input": "造一份含cell_id偏斜分布（20% cell占80%数据）的MR测试数据，共5万行",
+    "expected_spec": {
+      "target_name": "synthetic_test_data",
+      "kpi_family": "synthetic",
+      "sources": ["dw.mr_5g_15min"]
+    },
+    "expected_code_patterns": ["generator", "skew", "INSERT"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  }
+]
