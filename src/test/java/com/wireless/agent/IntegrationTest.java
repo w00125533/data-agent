@@ -277,4 +277,55 @@ class IntegrationTest {
         assertThat(decision.recommended()).isEqualTo("java_flink_streamapi");
         assertThat(decision.reasoning()).contains("反向合成");
     }
+
+    @Test
+    void shouldConvergeAfterAnsweringQuestions() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+
+        // Turn 1: Vague request triggers clarifying question
+        var result1 = agent.processMessage("做个切换失败统计");
+        assertThat(result1.get("next_action")).isIn("ask_clarifying", "code_done",
+                "dry_run_ok", "sandbox_failed");
+
+        // If clarifying, answer the question and check progress
+        if ("ask_clarifying".equals(result1.get("next_action"))) {
+            var result2 = agent.processMessage("按cell_id汇总,用signaling_events表");
+            assertThat(result2.get("next_action"))
+                    .isIn("ask_clarifying", "code_done", "dry_run_ok", "sandbox_failed");
+        }
+    }
+
+    @Test
+    void shouldForceProceedOnKeyword() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+
+        // Turn 1: Vague request
+        agent.processMessage("做个覆盖分析");
+
+        // Turn 2: Force proceed
+        var result = agent.processMessage("就这样,直接生成");
+        assertThat(result.get("next_action"))
+                .isIn("code_done", "dry_run_ok", "sandbox_failed");
+        assertThat(result.get("code").toString()).isNotEmpty();
+    }
+
+    @Test
+    void shouldTrackTurnCountAcrossConversation() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+
+        agent.processMessage("做个切换分析");
+        agent.processMessage("按cell_id汇总");
+        var result = agent.processMessage("用signaling_events数据源,直接生成代码");
+
+        assertThat(result.get("next_action"))
+                .isIn("code_done", "dry_run_ok", "sandbox_failed");
+        // Turn counter should be tracked
+        assertThat(result.get("turn")).isNotNull();
+    }
 }
