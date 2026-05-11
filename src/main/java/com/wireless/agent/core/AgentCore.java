@@ -126,7 +126,8 @@ public class AgentCore {
             "clarifying_question", "请提供更多关于目标数据集的信息",
             "code", "",
             "spec_summary", specSummary(),
-            "state", spec.state().value()
+            "state", spec.state().value(),
+            "turn", turn
         );
     }
 
@@ -311,7 +312,8 @@ public class AgentCore {
                 "next_action", "ask_clarifying",
                 "clarifying_question", "代码生成出错: " + codegenResult.error(),
                 "code", "",
-                "spec_summary", specSummary()
+                "spec_summary", specSummary(),
+                "turn", turn
             );
         }
         @SuppressWarnings("unchecked")
@@ -325,7 +327,8 @@ public class AgentCore {
                 "next_action", "ask_clarifying",
                 "clarifying_question", "SQL 校验失败: " + validation.error(),
                 "code", code,
-                "spec_summary", specSummary()
+                "spec_summary", specSummary(),
+                "turn", turn
             );
         }
         @SuppressWarnings("unchecked")
