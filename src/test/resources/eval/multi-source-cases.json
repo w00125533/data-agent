@@ -1,0 +1,85 @@
+[
+  {
+    "id": "eval-multi-001",
+    "category": "multi_source",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "关联5G MR和工参表，按区县统计弱覆盖小区，同时输出site经纬度信息",
+    "expected_spec": {
+      "kpi_family": "coverage",
+      "ne_grain": "district",
+      "time_grain": "day",
+      "rat": "5G_SA",
+      "sources": ["dw.mr_5g_15min", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["JOIN", "longitude", "latitude", "cell_id"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-multi-002",
+    "category": "multi_source",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "关联MR和KPI表，按同cell_id+同15min粒度，分析弱覆盖与切换失败的相关性",
+    "expected_spec": {
+      "kpi_family": "coverage",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "sources": ["dw.mr_5g_15min", "kpi_pm_cell_hour"]
+    },
+    "expected_code_patterns": ["JOIN", "cell_id", "rsrp", "handover"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-multi-003",
+    "category": "multi_source",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "联合信令+MR+工参三表，分析切换失败时的RSRP分布，输出district、失败次数、平均RSRP",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "district",
+      "sources": ["signaling_events", "dw.mr_5g_15min", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["JOIN", "cell_id", "rsrp", "handover", "failure"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-multi-004",
+    "category": "multi_source",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "关联QoE用户感知与MR覆盖指标，分析感知差与弱覆盖的重合度，输出重合小区比例",
+    "expected_spec": {
+      "kpi_family": "qoe",
+      "ne_grain": "cell",
+      "sources": ["dw.qoe_user_cell", "dw.mr_5g_15min"]
+    },
+    "expected_code_patterns": ["JOIN", "cell_id", "rsrp", "score"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-multi-005",
+    "category": "multi_source",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "关联维表dim.engineering_param，按区县和厂家(vendor)分组统计掉话率",
+    "expected_spec": {
+      "kpi_family": "retainability",
+      "ne_grain": "district",
+      "sources": ["kpi_pm_cell_hour", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["JOIN", "vendor", "district", "drop"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  }
+]

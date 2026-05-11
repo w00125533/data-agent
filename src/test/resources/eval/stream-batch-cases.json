@@ -1,0 +1,86 @@
+[
+  {
+    "id": "eval-sb-001",
+    "category": "stream_batch",
+    "direction": "forward_etl",
+    "engine": "flink_sql",
+    "nl_input": "Kafka信令流join Hive工参维表，实时输出每个小区切换失败次数及district信息",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "sources": ["signaling_events", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["JOIN", "lookup", "cell_id", "handover"],
+    "max_turns": 4,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-sb-002",
+    "category": "stream_batch",
+    "direction": "forward_etl",
+    "engine": "flink_sql",
+    "nl_input": "实时消费信令流，按5分钟滚动窗口统计每小区RRC请求数和接入成功率，lookup join工参获取district和site_name",
+    "expected_spec": {
+      "kpi_family": "accessibility",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "sources": ["signaling_events", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["TUMBLE", "lookup", "RRC", "join"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-sb-003",
+    "category": "stream_batch",
+    "direction": "forward_etl",
+    "engine": "flink_sql",
+    "nl_input": "Kafka signaling_events实时接入，过滤handover事件，按1小时滑动窗口每15分钟触发，统计切换失败数",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "sources": ["signaling_events"]
+    },
+    "expected_code_patterns": ["HOP", "window", "handover", "WHERE event"],
+    "max_turns": 3,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-sb-004",
+    "category": "stream_batch",
+    "direction": "forward_etl",
+    "engine": "flink_sql",
+    "nl_input": "实时流处理：信令流过滤handover事件，JOIN Hive维表dim.engineering_param获取geolocation，按district聚合切换成功率",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "district",
+      "time_grain": "15min",
+      "sources": ["signaling_events", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["JOIN", "handover", "district", "success"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-sb-005",
+    "category": "stream_batch",
+    "direction": "forward_etl",
+    "engine": "java_flink_streamapi",
+    "nl_input": "流式切换失败根因分析：需复杂状态机判断早切/晚切/乒乓切换三种类型，输出每种类型的计数和占比",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "cell",
+      "sources": ["signaling_events"]
+    },
+    "expected_code_patterns": ["DataStream", "state", "early", "late", "pingpong"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  }
+]
