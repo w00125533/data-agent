@@ -139,7 +139,7 @@ public class Spec {
 
         public Question(String fieldPath, String question, List<String> candidates) {
             this(fieldPath, question,
-                 candidates != null ? candidates : List.of(), null, false);
+                 candidates != null ? List.copyOf(candidates) : List.of(), null, false);
         }
 
         /** Return a new Question with answer filled and resolved=true. */
