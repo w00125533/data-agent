@@ -70,6 +70,35 @@ public final class Prompts {
                 """, qs);
     }
 
+    /** Parse user reply against the current open question and update spec. */
+    public static String buildReplyParsingPrompt(
+            String userMessage, Spec.Question currentQuestion, String currentSpecJson) {
+        return String.format("""
+                当前 Spec 状态: %s
+
+                上一轮反问: %s
+                可选候选项: %s
+
+                用户回复: "%s"
+
+                请解析用户回复:
+                1. 判断用户是否直接回答了问题 → 提取答案字符串
+                2. 如果用户回复匹配某个候选项,选择最匹配的那个作为答案
+                3. 如果用户说"就这样"/"好的"/"继续"/"go ahead",设置 next_action=ready_for_tools
+                4. 如果用户回复模糊或反问新问题,生成新的反问
+
+                在 intent_update.open_questions 中:
+                - 将已回答的问题 field_path 设为当前问题,附上 answer 和 resolved:true
+                - 包含当前问题的答案在 intent_update 相应字段中(如用户说"按天"→ time_grain="day")
+
+                输出标准 JSON 回复。
+                """,
+                currentSpecJson,
+                currentQuestion.question(),
+                currentQuestion.candidates(),
+                userMessage);
+    }
+
     public static final String REVERSE_SYNTHETIC_SYSTEM_PROMPT = """
             你是无线网络感知评估 Data Agent 的反向合成模块。
             用户会粘贴一段原始流水线 SQL/Java 代码,你的职责:

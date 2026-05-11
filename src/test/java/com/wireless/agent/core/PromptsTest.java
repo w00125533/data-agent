@@ -61,4 +61,29 @@ class PromptsTest {
         assertThat(prompt).contains("数据生产");
         assertThat(prompt).contains("分布");
     }
+
+    @Test
+    void shouldBuildReplyParsingPrompt() {
+        var currentQuestion = new Spec.Question("time_grain", "时间粒度是小时还是天?",
+                List.of("hour", "day"));
+        var prompt = Prompts.buildReplyParsingPrompt("按天统计", currentQuestion, "{}");
+
+        assertThat(prompt).contains("时间粒度");
+        assertThat(prompt).contains("按天统计");
+        assertThat(prompt).contains("hour");
+        assertThat(prompt).contains("day");
+        assertThat(prompt).contains("field_path");
+    }
+
+    @Test
+    void shouldBuildClarifyPromptWithUnansweredQuestions() {
+        var qs = List.of(
+                new Spec.Question("target_name", "目标表名?", List.of()),
+                new Spec.Question("time_grain", "时间粒度?", List.of("hour", "day")));
+
+        var prompt = Prompts.buildClarifyPrompt(qs);
+        assertThat(prompt).contains("目标表名");
+        assertThat(prompt).contains("时间粒度");
+        assertThat(prompt).contains("一次只问一个");
+    }
 }
