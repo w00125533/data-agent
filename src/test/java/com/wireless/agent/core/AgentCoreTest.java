@@ -1,8 +1,11 @@
 package com.wireless.agent.core;
 
+import com.wireless.agent.knowledge.DomainKnowledgeBase;
 import com.wireless.agent.llm.DeepSeekClient;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -133,5 +136,54 @@ class AgentCoreTest {
                 "thrift://nonexistent:9999", "da-spark-master");
         assertThat(agent.baselineService()).isNotNull();
         assertThat(agent.baselineService().name()).isEqualTo("baseline");
+    }
+
+    @Test
+    void shouldGenerateDeployArtifactsWhenCodegenDone() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+        agent.processMessage("弱覆盖小区统计"); // goes through to codegen_done
+
+        var result = agent.confirmDeploy();
+        assertThat(result.get("next_action")).isEqualTo("deployed");
+        assertThat(result.get("submit_script").toString()).contains("spark-submit");
+        assertThat(result.get("pr_template").toString()).contains("弱覆盖");
+        assertThat(result.get("ticket_template").toString()).contains("上线工单");
+    }
+
+    @Test
+    void shouldRejectDeployWhenNotCodegenDone() {
+        var agent = new AgentCore(null);
+        // state is GATHERING, not CODEGEN_DONE
+        var result = agent.confirmDeploy();
+        assertThat(result.get("next_action")).isEqualTo("deploy_failed");
+        assertThat(result.get("error").toString()).contains("not ready");
+    }
+
+    @Test
+    void shouldRecordTracesAcrossSession() throws Exception {
+        var tmpDir = Files.createTempDirectory("trace-test");
+        try {
+            var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                    "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                    new DomainKnowledgeBase());
+            agent.enableTrace(tmpDir, "trace-test-user");
+
+            agent.processMessage("弱覆盖统计");
+            var traceFile = tmpDir.resolve(agent.getSessionId() + ".json");
+            assertThat(Files.exists(traceFile)).isTrue();
+        } finally {
+            deleteRecursively(tmpDir);
+        }
+    }
+
+    private void deleteRecursively(Path dir) {
+        if (dir == null || !Files.exists(dir)) return;
+        try (var s = Files.walk(dir)) {
+            s.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try { Files.delete(p); } catch (Exception ignored) {}
+            });
+        } catch (Exception ignored) {}
     }
 }

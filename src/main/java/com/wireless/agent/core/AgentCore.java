@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.wireless.agent.knowledge.DomainKnowledgeBase;
 import com.wireless.agent.llm.DeepSeekClient;
 import com.wireless.agent.tools.*;
+import com.wireless.agent.trace.TraceRecorder;
 
+import java.nio.file.Path;
 import java.util.*;
 
 public class AgentCore {
@@ -29,6 +31,12 @@ public class AgentCore {
     private static final List<String> FORCE_PROCEED_KEYWORDS = List.of(
             "就这样", "好的", "继续", "go ahead", "ok", "可以", "没问题", "直接生成");
     private final ClarifyTool clarifyTool;
+    private final SchedulerTool schedulerTool;
+    private TraceRecorder traceRecorder;
+    private String sessionId;
+    private String lastGeneratedCode;
+    private final String sparkContainer;
+    private final String flinkContainer;
 
     public AgentCore(DeepSeekClient llmClient) {
         this(llmClient, Spec.TaskDirection.FORWARD_ETL,
@@ -69,6 +77,10 @@ public class AgentCore {
         this.validatorTool = new ValidatorTool();
         this.sandboxTool = new SandboxTool(cmdRunner, sparkContainer, flinkContainer, baselineService);
         this.clarifyTool = new ClarifyTool();
+        this.schedulerTool = new SchedulerTool();
+        this.sessionId = "session-" + System.currentTimeMillis();
+        this.sparkContainer = sparkContainer;
+        this.flinkContainer = flinkContainer;
     }
 
     public Spec spec() { return spec; }
@@ -77,13 +89,19 @@ public class AgentCore {
     public Map<String, Object> processMessage(String userMessage) {
         turn++;
 
+        if (traceRecorder != null) {
+            try {
+                traceRecorder.recordSpecSnapshot(turn, MAPPER.writeValueAsString(spec));
+            } catch (Exception ignored) {}
+        }
+
         var intent = callLlmExtract(userMessage);
         applyIntent(intent);
 
         // Force-proceed: user explicitly asks to continue
         if (isForceProceed(userMessage)) {
             spec.state(Spec.SpecState.READY_TO_CODEGEN);
-            return executeTools();
+            return executeTools(userMessage);
         }
 
         // If spec is clarifying state and hasn't converged, use ClarifyTool
@@ -93,7 +111,7 @@ public class AgentCore {
             var data = (Map<String, Object>) clarifyResult.data();
             var questionText = data != null ? data.getOrDefault("question", "").toString() : "";
             spec.advanceState();
-            return Map.of(
+            Map<String, Object> response = Map.of(
                 "next_action", "ask_clarifying",
                 "clarifying_question", !questionText.isEmpty() ? questionText : "请补充更多信息",
                 "code", "",
@@ -101,24 +119,33 @@ public class AgentCore {
                 "state", spec.state().value(),
                 "turn", turn
             );
+            if (traceRecorder != null) {
+                traceRecorder.recordConversation(turn, userMessage, "反问: " + questionText);
+            }
+            return response;
         }
 
         var nextAction = intent.getOrDefault("next_action", "ask_clarifying").toString();
 
         if ("ready_for_tools".equals(nextAction) || spec.state() == Spec.SpecState.READY_TO_CODEGEN) {
-            return executeTools();
+            return executeTools(userMessage);
         }
 
         if ("ask_clarifying".equals(nextAction) || spec.state() == Spec.SpecState.CLARIFYING) {
             var clarifyingQuestion = intent.get("clarifying_question");
-            return Map.of(
+            var qText = clarifyingQuestion != null ? clarifyingQuestion.toString() : "请补充更多信息";
+            Map<String, Object> response = Map.of(
                 "next_action", "ask_clarifying",
-                "clarifying_question", clarifyingQuestion != null ? clarifyingQuestion.toString() : "请补充更多信息",
+                "clarifying_question", qText,
                 "code", "",
                 "spec_summary", specSummary(),
                 "state", spec.state().value(),
                 "turn", turn
             );
+            if (traceRecorder != null) {
+                traceRecorder.recordConversation(turn, userMessage, "反问: " + qText);
+            }
+            return response;
         }
 
         return Map.of(
@@ -270,7 +297,7 @@ public class AgentCore {
         spec.advanceState();
     }
 
-    private Map<String, Object> executeTools() {
+    private Map<String, Object> executeTools(String userMessage) {
         // 1. Metadata lookup — fill schema for each source
         for (var src : spec.sources()) {
             if (src.schema_() == null || src.schema_().isEmpty()) {
@@ -302,7 +329,17 @@ public class AgentCore {
 
         // 3. Engine selection
         if (spec.engineDecision() == null || spec.engineDecision().recommended().isEmpty()) {
-            spec.engineDecision(EngineSelector.select(spec));
+            // Populate deployment config for the selected engine
+            var decision = EngineSelector.select(spec);
+            spec.engineDecision(new Spec.EngineDecision(
+                decision.recommended(),
+                decision.reasoning(),
+                decision.userOverridden(),
+                Map.of(
+                    "submission_mode", "one_shot",
+                    "target_container", decision.recommended().contains("flink")
+                            ? flinkContainer : sparkContainer
+                )));
         }
 
         // 4. Codegen
@@ -319,6 +356,7 @@ public class AgentCore {
         @SuppressWarnings("unchecked")
         var codegenData = (Map<String, Object>) codegenResult.data();
         var code = codegenData.getOrDefault("code", "").toString();
+        this.lastGeneratedCode = code;
 
         // 5. Validate
         var validation = validatorTool.validate(code, spec);
@@ -355,6 +393,72 @@ public class AgentCore {
         response.put("warnings", warnings != null ? warnings : List.of());
         response.put("preview", dryRunResult.getOrDefault("preview", ""));
         response.put("error", dryRunResult.getOrDefault("error", ""));
+        response.put("turn", turn);
+        if (traceRecorder != null) {
+            traceRecorder.recordConversation(turn, userMessage, "codegen complete: " + response.get("next_action"));
+            traceRecorder.finish("codegen_done");
+        }
+        return response;
+    }
+
+    /** Enable trace recording for this session. */
+    public void enableTrace(Path traceDir, String user) {
+        this.traceRecorder = new TraceRecorder(traceDir, sessionId, user);
+    }
+
+    /** Get the current session ID. */
+    public String getSessionId() { return sessionId; }
+
+    /** Generate deploy artifacts after codegen is done and user confirms. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> confirmDeploy() {
+        if (spec.state() != Spec.SpecState.CODEGEN_DONE) {
+            return Map.of(
+                "next_action", "deploy_failed",
+                "error", "Spec not ready for deployment: state=" + spec.state().value(),
+                "submit_script", "",
+                "pr_template", "",
+                "ticket_template", ""
+            );
+        }
+
+        var code = lastGeneratedCode;
+        if (code == null || code.isBlank()) {
+            return Map.of(
+                "next_action", "deploy_failed",
+                "error", "No generated code available to deploy",
+                "submit_script", "",
+                "pr_template", "",
+                "ticket_template", ""
+            );
+        }
+
+        var result = schedulerTool.run(spec, code);
+        if (!result.success()) {
+            return Map.of(
+                "next_action", "deploy_failed",
+                "error", result.error(),
+                "submit_script", "",
+                "pr_template", "",
+                "ticket_template", ""
+            );
+        }
+
+        var data = (Map<String, Object>) result.data();
+
+        if (traceRecorder != null) {
+            var codeHash = data.getOrDefault("code_hash", "").toString();
+            traceRecorder.recordFinalArtifact(code, codeHash, "", "");
+            traceRecorder.finish("deployed");
+        }
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("next_action", "deployed");
+        response.put("submit_script", data.getOrDefault("submit_script", ""));
+        response.put("pr_template", data.getOrDefault("pr_template", ""));
+        response.put("ticket_template", data.getOrDefault("ticket_template", ""));
+        response.put("code_hash", data.getOrDefault("code_hash", ""));
+        response.put("engine", spec.engineDecision() != null ? spec.engineDecision().recommended() : "");
         response.put("turn", turn);
         return response;
     }
