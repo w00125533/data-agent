@@ -103,6 +103,7 @@ services:
       - ./docker/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
       - ./docker/hive/entrypoint.sh:/opt/hive/entrypoint.sh:ro
       - ./docker/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ${HOME}/.m2/repository/org/postgresql/postgresql/42.6.0/postgresql-42.6.0.jar:/opt/hive/lib/postgresql-42.6.0.jar:ro
     ports:
       - "${HMS_PORT}:9083"
     networks:
@@ -128,6 +129,11 @@ services:
       SPARK_MODE: master
       SPARK_MASTER_PORT: 7077
       SPARK_MASTER_WEBUI_PORT: 8080
+      HOME: /tmp
+      HADOOP_USER_NAME: spark
+      LD_PRELOAD: /opt/bitnami/common/lib/libnss_wrapper.so
+      NSS_WRAPPER_PASSWD: /opt/bitnami/spark/tmp/nss_passwd
+      NSS_WRAPPER_GROUP: /opt/bitnami/spark/tmp/nss_group
     volumes:
       - ./docker/spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
       - ./docker/hive/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml:ro
@@ -158,6 +164,11 @@ services:
       SPARK_MASTER_URL: spark://spark-master:7077
       SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY}
       SPARK_WORKER_CORES: ${SPARK_WORKER_CORES}
+      HOME: /tmp
+      HADOOP_USER_NAME: spark
+      LD_PRELOAD: /opt/bitnami/common/lib/libnss_wrapper.so
+      NSS_WRAPPER_PASSWD: /opt/bitnami/spark/tmp/nss_passwd
+      NSS_WRAPPER_GROUP: /opt/bitnami/spark/tmp/nss_group
     volumes:
       - ./docker/spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
       - ./docker/hive/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml:ro
