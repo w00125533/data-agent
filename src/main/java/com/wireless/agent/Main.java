@@ -124,13 +124,26 @@ public class Main {
             var result = agent.processMessage(input.trim());
 
             switch (result.get("next_action").toString()) {
-                case "ask_clarifying" ->
-                    System.out.println("[反问] " + result.get("clarifying_question"));
+                case "ask_clarifying" -> {
+                    var turn = result.get("turn");
+                    var state = result.get("state");
+                    var turnInfo = turn != null ? "[轮次 " + turn + "/5] " : "";
+                    var stateInfo = state != null ? "(" + state + ") " : "";
+                    System.out.println(turnInfo + stateInfo + "[反问] " + result.get("clarifying_question"));
+                }
                 case "code_done" -> {
+                    var turn = result.get("turn");
+                    if (turn != null) {
+                        System.out.println("[收敛] 经过 " + turn + " 轮反问,规格已就绪");
+                    }
                     System.out.println("[引擎] " + result.get("engine") + " — " + result.get("reasoning"));
                     System.out.println("[代码]\n" + result.get("code"));
                 }
-                default -> System.out.println("[状态] " + result.get("next_action"));
+                default -> {
+                    var turn = result.get("turn");
+                    var prefix = turn != null ? "[轮次 " + turn + "] " : "";
+                    System.out.println(prefix + "[状态] " + result.get("next_action"));
+                }
             }
             System.out.println("[Spec] " + result.get("spec_summary"));
         }
