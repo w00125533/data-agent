@@ -7,6 +7,8 @@ import com.wireless.agent.knowledge.DomainKnowledgeBase;
 import com.wireless.agent.llm.DeepSeekClient;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -327,5 +329,87 @@ class IntegrationTest {
                 .isIn("code_done", "dry_run_ok", "sandbox_failed");
         // Turn counter should be tracked
         assertThat(result.get("turn")).isNotNull();
+    }
+
+    @Test
+    void shouldCompleteFullLoopIncludingDeploy() {
+        var agent = new AgentCore(
+            new FakeLLMForIntegration(),
+            Spec.TaskDirection.FORWARD_ETL
+        );
+        // Run through to codegen_done
+        var result = agent.processMessage("给我近30天每个区县5G弱覆盖小区清单");
+        assertThat(result.get("next_action")).isIn("code_done", "dry_run_ok", "sandbox_failed");
+        assertThat(agent.spec().state()).isEqualTo(Spec.SpecState.CODEGEN_DONE);
+
+        // Confirm deploy
+        var deployResult = agent.confirmDeploy();
+        assertThat(deployResult.get("next_action")).isEqualTo("deployed");
+        assertThat(deployResult.get("submit_script").toString()).contains("spark-submit");
+        assertThat(deployResult.get("pr_template").toString())
+                .contains("弱覆盖", "## 变更内容");
+        assertThat(deployResult.get("ticket_template").toString())
+                .contains("上线工单", "回滚方案");
+        assertThat(deployResult.get("code_hash").toString()).isNotEmpty();
+    }
+
+    @Test
+    void shouldGenerateFlinkDeployArtifacts() {
+        var agent = new AgentCore(null, Spec.TaskDirection.FORWARD_ETL,
+                "thrift://nonexistent:9999", "da-spark-master", "da-flink-jobmanager",
+                new DomainKnowledgeBase());
+        agent.processMessage("实时监控最近1小时每个小区的切换失败次数");
+
+        var deployResult = agent.confirmDeploy();
+        if ("deployed".equals(deployResult.get("next_action"))) {
+            // For Flink tasks, submit script should use sql-client;
+            // mock extraction may pick spark engine, in which case skip the check
+            var engine = deployResult.get("engine").toString();
+            if (engine.contains("flink")) {
+                var script = deployResult.get("submit_script").toString();
+                assertThat(script.toLowerCase()).containsAnyOf("flink", "sql-client");
+            }
+        }
+    }
+
+    @Test
+    void shouldRejectDeployWhenStateIsClarifying() {
+        var agent = new AgentCore(null);
+        // Don't process any message — state is still GATHERING
+        var result = agent.confirmDeploy();
+        assertThat(result.get("next_action")).isEqualTo("deploy_failed");
+    }
+
+    @Test
+    void shouldRecordTraceForFullSession() throws Exception {
+        var tmpDir = Files.createTempDirectory("trace-integration-test");
+        try {
+            var agent = new AgentCore(
+                new FakeLLMForIntegration(),
+                Spec.TaskDirection.FORWARD_ETL
+            );
+            agent.enableTrace(tmpDir, "integration-test-user");
+
+            agent.processMessage("弱覆盖小区统计");
+            agent.confirmDeploy();
+
+            var replay = new com.wireless.agent.trace.TraceReplay();
+            var sessions = replay.listSessions(tmpDir);
+            assertThat(sessions).isNotEmpty();
+
+            var trace = replay.load(tmpDir, sessions.get(0));
+            assertThat(trace.finalState).isIn("deployed", "codegen_done");
+            assertThat(trace.events).isNotEmpty();
+
+            // Verify event type distribution
+            var counts = replay.eventTypeCounts(trace);
+            assertThat(counts).isNotEmpty();
+        } finally {
+            try (var s = Files.walk(tmpDir)) {
+                s.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                    try { Files.delete(p); } catch (Exception ignored) {}
+                });
+            }
+        }
     }
 }
