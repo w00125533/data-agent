@@ -18,7 +18,6 @@ public class TraceRecorder {
 
     private final Path outputDir;
     private final SessionTrace trace;
-    private int llmCallCounter;
     private final Object lock = new Object();
 
     public TraceRecorder(Path outputDir, String sessionId, String user) {
@@ -74,7 +73,6 @@ public class TraceRecorder {
             e.completionTokens = completionTokens;
             e.latencyMs = latencyMs;
             trace.events.add(e);
-            llmCallCounter++;
         }
     }
 
