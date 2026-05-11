@@ -5,6 +5,7 @@ import com.wireless.agent.core.Spec;
 import com.wireless.agent.llm.DeepSeekClient;
 
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
 import java.util.Scanner;
@@ -20,10 +21,14 @@ public class Main {
         var demo = false;
         var noLlm = false;
         var reverse = false;
+        var deploy = false;
+        var traceEnabled = false;
         for (var arg : args) {
             if ("--demo".equals(arg)) demo = true;
             if ("--no-llm".equals(arg)) noLlm = true;
             if ("--reverse".equals(arg)) reverse = true;
+            if ("--deploy".equals(arg)) deploy = true;
+            if ("--trace".equals(arg)) traceEnabled = true;
         }
 
         var taskDirection = reverse ? Spec.TaskDirection.REVERSE_SYNTHETIC : Spec.TaskDirection.FORWARD_ETL;
@@ -56,7 +61,7 @@ public class Main {
         if (demo) {
             runDemo(llmClient, hmsUri, sparkContainer, flinkContainer, taskDirection);
         } else {
-            runInteractive(llmClient, hmsUri, sparkContainer, flinkContainer, taskDirection);
+            runInteractive(llmClient, hmsUri, sparkContainer, flinkContainer, taskDirection, props, deploy, traceEnabled);
         }
     }
 
@@ -98,11 +103,20 @@ public class Main {
     }
 
     private static void runInteractive(DeepSeekClient llmClient, String hmsUri, String sparkContainer,
-                                      String flinkContainer, Spec.TaskDirection taskDirection) {
+                                      String flinkContainer, Spec.TaskDirection taskDirection,
+                                      Properties props, boolean deploy, boolean traceEnabled) {
         System.out.println("Data Agent — 无线网络感知评估 (输入 /quit 退出)");
         var agent = new AgentCore(llmClient, taskDirection,
                 hmsUri, sparkContainer, flinkContainer, new com.wireless.agent.knowledge.DomainKnowledgeBase());
         System.out.println("[Spec] " + agent.specSummary());
+
+        if (traceEnabled || "true".equals(System.getenv().getOrDefault("TRACE_ENABLED",
+                props.getProperty("trace.enabled", "true")))) {
+            var traceDir = Path.of(System.getenv().getOrDefault("TRACE_OUTPUT_DIR",
+                    props.getProperty("trace.output_dir", "./.data-agent/traces")));
+            agent.enableTrace(traceDir, System.getProperty("user.name", "anonymous"));
+            System.out.println("[Info] Trace recording to: " + traceDir);
+        }
 
         var scanner = new Scanner(System.in);
         while (true) {
@@ -131,13 +145,42 @@ public class Main {
                     var stateInfo = state != null ? "(" + state + ") " : "";
                     System.out.println(turnInfo + stateInfo + "[反问] " + result.get("clarifying_question"));
                 }
-                case "code_done" -> {
+                case "code_done", "dry_run_ok" -> {
                     var turn = result.get("turn");
                     if (turn != null) {
                         System.out.println("[收敛] 经过 " + turn + " 轮反问,规格已就绪");
                     }
                     System.out.println("[引擎] " + result.get("engine") + " — " + result.get("reasoning"));
                     System.out.println("[代码]\n" + result.get("code"));
+                    if (result.get("preview") != null && !result.get("preview").toString().isEmpty()) {
+                        System.out.println("[预览]\n" + result.get("preview"));
+                    }
+                    // Ask for deploy confirmation
+                    if (deploy) {
+                        System.out.println();
+                        System.out.println("─".repeat(40));
+                        System.out.println("是否生成上线产物? (yes / 直接回车跳过)");
+                        System.out.print("> ");
+                        var confirm = scanner.nextLine().trim().toLowerCase();
+                        if ("yes".equals(confirm) || "y".equals(confirm)) {
+                            var deployResult = agent.confirmDeploy();
+                            if ("deployed".equals(deployResult.get("next_action"))) {
+                                System.out.println();
+                                System.out.println("=== 提交脚本 ===");
+                                System.out.println(deployResult.get("submit_script"));
+                                System.out.println();
+                                System.out.println("=== PR 模板 ===");
+                                System.out.println(deployResult.get("pr_template"));
+                                System.out.println();
+                                System.out.println("=== 上线工单 ===");
+                                System.out.println(deployResult.get("ticket_template"));
+                                System.out.println();
+                                System.out.println("[部署] 产物已生成 (code_hash: " + deployResult.get("code_hash") + ")");
+                            } else {
+                                System.out.println("[部署失败] " + deployResult.get("error"));
+                            }
+                        }
+                    }
                 }
                 default -> {
                     var turn = result.get("turn");
