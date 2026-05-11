@@ -1,0 +1,88 @@
+[
+  {
+    "id": "eval-mob-001",
+    "category": "mobility",
+    "direction": "forward_etl",
+    "engine": "flink_sql",
+    "nl_input": "实时监控最近1小时每个小区的切换失败次数",
+    "expected_spec": {
+      "target_name": "切换失败统计",
+      "kpi_family": "mobility",
+      "ne_grain": "cell",
+      "time_grain": "hour",
+      "rat": "5G_SA",
+      "sources": ["signaling_events"]
+    },
+    "expected_code_patterns": ["SELECT", "handover", "failure", "COUNT"],
+    "max_turns": 3,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-mob-002",
+    "category": "mobility",
+    "direction": "forward_etl",
+    "engine": "flink_sql",
+    "nl_input": "按cell_id汇总切换失败原因分布，区分早切和晚切场景",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "sources": ["signaling_events"]
+    },
+    "expected_code_patterns": ["SELECT", "early", "late", "handover"],
+    "max_turns": 4,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-mob-003",
+    "category": "mobility",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "统计各小区过去7天的切换成功率，关联工参表的district字段",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "cell",
+      "time_grain": "day",
+      "sources": ["kpi_pm_cell_hour", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["SELECT", "JOIN", "handover"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-mob-004",
+    "category": "mobility",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "切换失败率TOP50小区清单，输出cell_id、district、失败次数、失败率",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "cell",
+      "sources": ["kpi_pm_cell_hour"]
+    },
+    "expected_code_patterns": ["ORDER BY", "LIMIT 50", "failure", "RATE"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-mob-005",
+    "category": "mobility",
+    "direction": "forward_etl",
+    "engine": "flink_sql",
+    "nl_input": "滑动窗口5分钟，统计各小区切换请求数和切换成功数，输出成功率",
+    "expected_spec": {
+      "kpi_family": "mobility",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "sources": ["signaling_events"]
+    },
+    "expected_code_patterns": ["HOP", "TUMBLE", "window", "handover", "success"],
+    "max_turns": 3,
+    "must_compile": true,
+    "must_dry_run": false
+  }
+]
