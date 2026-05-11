@@ -91,10 +91,10 @@ public class UserPreferencesStore {
             if (!dirsCreated) {
                 try {
                     Files.createDirectories(storeDir);
+                    dirsCreated = true;
                 } catch (IOException e) {
                     System.err.println("[UserPreferencesStore] Failed to create store dir: " + e.getMessage());
                 }
-                dirsCreated = true;
             }
         }
     }
