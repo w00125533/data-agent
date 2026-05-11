@@ -1,0 +1,86 @@
+[
+  {
+    "id": "eval-qoe-001",
+    "category": "qoe",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "感知差小区统计：TCP重传率高于15%且网页时延大于3秒的小区",
+    "expected_spec": {
+      "kpi_family": "qoe",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "rat": "5G_SA",
+      "sources": ["dw.qoe_user_cell"]
+    },
+    "expected_code_patterns": ["SELECT", "tcp", "retrans", "15", "latency", "3"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-qoe-002",
+    "category": "qoe",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "每个区县视频卡顿率统计，过去7天，输出district、总视频会话数、卡顿会话数、卡顿率",
+    "expected_spec": {
+      "kpi_family": "qoe",
+      "ne_grain": "district",
+      "time_grain": "day",
+      "sources": ["dw.qoe_user_cell"]
+    },
+    "expected_code_patterns": ["video", "stall", "RATE"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-qoe-003",
+    "category": "qoe",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "用户感知评分低于3分的小区清单，输出cell_id、平均评分、采样数、主要劣化因子",
+    "expected_spec": {
+      "kpi_family": "qoe",
+      "ne_grain": "cell",
+      "sources": ["dw.qoe_user_cell"]
+    },
+    "expected_code_patterns": ["SELECT", "score", "3"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-qoe-004",
+    "category": "qoe",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "网页首屏时延P99统计，按区县汇总，过滤时延>5秒的异常样本",
+    "expected_spec": {
+      "kpi_family": "qoe",
+      "ne_grain": "district",
+      "time_grain": "day",
+      "sources": ["dw.qoe_user_cell"]
+    },
+    "expected_code_patterns": ["SELECT", "latency", "PERCENTILE", "5"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-qoe-005",
+    "category": "qoe",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "感知差小区关联覆盖指标：弱覆盖且视频卡顿率高的小区TOP20",
+    "expected_spec": {
+      "kpi_family": "qoe",
+      "ne_grain": "cell",
+      "sources": ["dw.qoe_user_cell", "dw.mr_5g_15min"]
+    },
+    "expected_code_patterns": ["SELECT", "JOIN", "rsrp", "video", "stall", "LIMIT 20"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  }
+]
