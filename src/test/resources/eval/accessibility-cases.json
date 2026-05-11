@@ -1,0 +1,87 @@
+[
+  {
+    "id": "eval-acc-001",
+    "category": "accessibility",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "统计各小区RRC建立成功率，输出cell_id、请求数、成功数、成功率",
+    "expected_spec": {
+      "kpi_family": "accessibility",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "rat": "5G_SA",
+      "sources": ["kpi_pm_cell_hour"]
+    },
+    "expected_code_patterns": ["SELECT", "RRC", "success", "COUNT"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-acc-002",
+    "category": "accessibility",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "E-RAB建立成功率按区县汇总，过滤掉成功率低于90%的小区",
+    "expected_spec": {
+      "kpi_family": "accessibility",
+      "ne_grain": "district",
+      "time_grain": "day",
+      "sources": ["kpi_pm_cell_hour"]
+    },
+    "expected_code_patterns": ["E-RAB", "success", "90"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-acc-003",
+    "category": "retainability",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "各小区掉话率统计，过去30天，输出cell_id、掉话次数、总通话次数、掉话率",
+    "expected_spec": {
+      "kpi_family": "retainability",
+      "ne_grain": "cell",
+      "time_grain": "day",
+      "sources": ["kpi_pm_cell_hour"]
+    },
+    "expected_code_patterns": ["SELECT", "drop", "RATE"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-acc-004",
+    "category": "retainability",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "E-RAB掉线率超过5%的高风险小区清单，按掉线率降序排列",
+    "expected_spec": {
+      "kpi_family": "retainability",
+      "ne_grain": "cell",
+      "sources": ["kpi_pm_cell_hour"]
+    },
+    "expected_code_patterns": ["ORDER BY", "DESC", "drop", "5"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-acc-005",
+    "category": "accessibility",
+    "direction": "forward_etl",
+    "engine": "flink_sql",
+    "nl_input": "实时统计最近30分钟每个小区新接入请求数，超过100条则输出告警",
+    "expected_spec": {
+      "kpi_family": "accessibility",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "sources": ["signaling_events"]
+    },
+    "expected_code_patterns": ["SELECT", "COUNT", "100", "window"],
+    "max_turns": 3,
+    "must_compile": true,
+    "must_dry_run": false
+  }
+]
