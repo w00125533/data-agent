@@ -27,7 +27,7 @@ class PromptsTest {
     @Test
     void clarifyPromptShouldContainOpenQuestions() {
         var questions = List.of(
-            Map.<String, Object>of("field_path", "a", "question", "什么是活跃用户？")
+            new Spec.Question("a", "什么是活跃用户？", List.of())
         );
         var prompt = Prompts.buildClarifyPrompt(questions);
         assertThat(prompt).contains("活跃用户");

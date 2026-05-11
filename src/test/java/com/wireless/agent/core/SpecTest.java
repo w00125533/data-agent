@@ -60,7 +60,7 @@ class SpecTest {
         spec.addQuestion("field_b", "时间粒度？", null);
         var q = spec.nextQuestion();
         assertThat(q).isNotNull();
-        assertThat(q.get("question")).isEqualTo("什么是活跃用户？");
+        assertThat(q.question()).isEqualTo("什么是活跃用户？");
     }
 
     @Test
@@ -98,5 +98,51 @@ class SpecTest {
     void shouldReturnNullWhenPipelineNotSet() {
         var spec = new Spec(Spec.TaskDirection.REVERSE_SYNTHETIC);
         assertThat(spec.originalPipeline()).isNull();
+    }
+
+    @Test
+    void shouldCreateQuestionWithAnswer() {
+        var q = new Spec.Question("data_scale", "数据规模多大?", List.of("1k", "10k", "1M"));
+        assertThat(q.fieldPath()).isEqualTo("data_scale");
+        assertThat(q.question()).contains("数据规模");
+        assertThat(q.candidates()).containsExactly("1k", "10k", "1M");
+        assertThat(q.resolved()).isFalse();
+        assertThat(q.answer()).isNull();
+
+        var answered = q.withAnswer("10k");
+        assertThat(answered.resolved()).isTrue();
+        assertThat(answered.answer()).isEqualTo("10k");
+    }
+
+    @Test
+    void shouldAddAndRetrieveUnansweredQuestions() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.addQuestion("target_name", "目标表名?", List.of());
+        spec.addQuestion("time_grain", "时间粒度?", List.of("hour", "day"));
+
+        var unanswered = spec.unansweredQuestions();
+        assertThat(unanswered).hasSize(2);
+        assertThat(unanswered.get(0).fieldPath()).isEqualTo("target_name");
+    }
+
+    @Test
+    void shouldMarkQuestionAnswered() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.addQuestion("target_name", "目标表名?", List.of("handover_kpi", "coverage_kpi"));
+        spec.addQuestion("time_grain", "时间粒度?", List.of("hour", "day"));
+
+        spec.markAnswered("target_name", "handover_kpi");
+
+        var unanswered = spec.unansweredQuestions();
+        assertThat(unanswered).hasSize(1);
+        assertThat(unanswered.get(0).fieldPath()).isEqualTo("time_grain");
+        assertThat(spec.openQuestions().get(0).resolved()).isTrue();
+    }
+
+    @Test
+    void shouldNotCrashWhenMarkingNonexistentField() {
+        var spec = new Spec(Spec.TaskDirection.FORWARD_ETL);
+        spec.markAnswered("nonexistent", "value");
+        assertThat(spec.unansweredQuestions()).isEmpty();
     }
 }

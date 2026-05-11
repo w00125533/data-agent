@@ -130,6 +130,24 @@ public class Spec {
             @JsonProperty("source")    String source,
             @JsonProperty("findings")  Map<String, Object> findings) {}
 
+    public record Question(
+            @JsonProperty("field_path")  String fieldPath,
+            @JsonProperty("question")   String question,
+            @JsonProperty("candidates") List<String> candidates,
+            @JsonProperty("answer")     String answer,
+            @JsonProperty("resolved")   boolean resolved) {
+
+        public Question(String fieldPath, String question, List<String> candidates) {
+            this(fieldPath, question,
+                 candidates != null ? candidates : List.of(), null, false);
+        }
+
+        /** Return a new Question with answer filled and resolved=true. */
+        public Question withAnswer(String a) {
+            return new Question(fieldPath, question, candidates, a, true);
+        }
+    }
+
     // ─── Spec fields ─────────────────────────────────
 
     @JsonProperty("task_direction")  private TaskDirection taskDirection;
@@ -139,7 +157,7 @@ public class Spec {
     @JsonProperty("sources")         private List<SourceBinding> sources = new ArrayList<>();
     @JsonProperty("transformations") private List<TransformStep> transformations = new ArrayList<>();
     @JsonProperty("engine_decision") private EngineDecision engineDecision;
-    @JsonProperty("open_questions")  private List<Map<String, Object>> openQuestions = new ArrayList<>();
+    @JsonProperty("open_questions")  private List<Question> openQuestions = new ArrayList<>();
     @JsonProperty("evidence")        private List<Evidence> evidence = new ArrayList<>();
     @JsonProperty("original_pipeline") private String originalPipeline;
     @JsonProperty("owners")          private Map<String, List<String>> owners = new LinkedHashMap<>();
@@ -163,7 +181,7 @@ public class Spec {
     public List<TransformStep> transformations() { return transformations; }
     public EngineDecision engineDecision() { return engineDecision; }
     public Spec engineDecision(EngineDecision v) { engineDecision = v; return this; }
-    public List<Map<String, Object>> openQuestions() { return openQuestions; }
+    public List<Question> openQuestions() { return openQuestions; }
     public List<Evidence> evidence() { return evidence; }
     public Map<String, List<String>> owners() { return owners; }
     public List<Map<String, Object>> testCases() { return testCases; }
@@ -196,16 +214,32 @@ public class Spec {
         return state;
     }
 
-    public Map<String, Object> nextQuestion() {
-        if (openQuestions.isEmpty()) return null;
-        return openQuestions.get(0);
+    public Question nextQuestion() {
+        return openQuestions.stream()
+                .filter(q -> !q.resolved())
+                .findFirst()
+                .orElse(null);
     }
 
     public void addQuestion(String fieldPath, String question, List<String> candidates) {
-        var q = new LinkedHashMap<String, Object>();
-        q.put("field_path", fieldPath);
-        q.put("question", question);
-        q.put("candidates", candidates != null ? candidates : List.of());
-        openQuestions.add(q);
+        openQuestions.add(new Question(fieldPath, question, candidates));
+    }
+
+    /** Mark the first unanswered question with matching fieldPath as resolved with the given answer. */
+    public void markAnswered(String fieldPath, String answer) {
+        for (int i = 0; i < openQuestions.size(); i++) {
+            var q = openQuestions.get(i);
+            if (!q.resolved() && q.fieldPath().equals(fieldPath)) {
+                openQuestions.set(i, q.withAnswer(answer));
+                return;
+            }
+        }
+    }
+
+    /** Return all questions that have not been answered yet. */
+    public List<Question> unansweredQuestions() {
+        return openQuestions.stream()
+                .filter(q -> !q.resolved())
+                .toList();
     }
 }

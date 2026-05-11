@@ -56,9 +56,10 @@ public final class Prompts {
                 currentSpecJson, userMessage);
     }
 
-    public static String buildClarifyPrompt(List<Map<String, Object>> openQuestions) {
+    public static String buildClarifyPrompt(List<Spec.Question> openQuestions) {
         var qs = openQuestions.stream()
-                .map(q -> "- " + q.get("field_path") + ": " + q.get("question"))
+                .filter(q -> !q.resolved())
+                .map(q -> "- " + q.fieldPath() + ": " + q.question())
                 .collect(Collectors.joining("\n"));
         return String.format("""
                 你需要向用户请求澄清以下问题,一次只问一个(优先级从高到低):
