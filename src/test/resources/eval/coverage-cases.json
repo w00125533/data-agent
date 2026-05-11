@@ -1,0 +1,91 @@
+[
+  {
+    "id": "eval-cov-001",
+    "category": "coverage",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "给我近30天每个区县5G弱覆盖小区清单",
+    "expected_spec": {
+      "target_name": "弱覆盖小区统计",
+      "kpi_family": "coverage",
+      "ne_grain": "district",
+      "time_grain": "day",
+      "rat": "5G_SA",
+      "timeliness": "batch_daily",
+      "sources": ["dw.mr_5g_15min"]
+    },
+    "expected_code_patterns": ["SELECT", "rsrp"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-cov-002",
+    "category": "coverage",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "按cell_id统计5G弱覆盖小区数量，RSRP < -110 dBm占比 > 30%",
+    "expected_spec": {
+      "target_name": "弱覆盖小区统计",
+      "kpi_family": "coverage",
+      "ne_grain": "cell",
+      "time_grain": "15min",
+      "rat": "5G_SA",
+      "sources": ["dw.mr_5g_15min"]
+    },
+    "expected_code_patterns": ["rsrp_avg", "weak_cov_ratio", "30"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-cov-003",
+    "category": "coverage",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "近7天各小区4G弱覆盖情况，按district汇总",
+    "expected_spec": {
+      "kpi_family": "coverage",
+      "ne_grain": "district",
+      "time_grain": "day",
+      "rat": "4G",
+      "sources": ["dw.mr_4g_15min"]
+    },
+    "expected_code_patterns": ["SELECT", "rsrp"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-cov-004",
+    "category": "coverage",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "统计每个区县过覆盖（重叠覆盖）小区数量，关联工参表取district和site_name",
+    "expected_spec": {
+      "kpi_family": "coverage",
+      "ne_grain": "district",
+      "sources": ["dw.mr_5g_15min", "dim.engineering_param"]
+    },
+    "expected_code_patterns": ["SELECT", "JOIN", "district"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  },
+  {
+    "id": "eval-cov-005",
+    "category": "coverage",
+    "direction": "forward_etl",
+    "engine": "spark_sql",
+    "nl_input": "深度覆盖差小区TOP100，按RSRP排序升序，输出cell_id、district、平均RSRP、采样数",
+    "expected_spec": {
+      "kpi_family": "coverage",
+      "ne_grain": "cell",
+      "sources": ["dw.mr_5g_15min"]
+    },
+    "expected_code_patterns": ["ORDER BY", "LIMIT 100", "rsrp"],
+    "max_turns": 5,
+    "must_compile": true,
+    "must_dry_run": false
+  }
+]
