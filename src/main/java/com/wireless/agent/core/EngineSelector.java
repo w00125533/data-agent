@@ -1,5 +1,7 @@
 package com.wireless.agent.core;
 
+import com.wireless.agent.prefs.UserPreferencesStore;
+
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -9,7 +11,11 @@ public final class EngineSelector {
     private EngineSelector() {}
 
     private static final Spec.EngineDecision FALLBACK =
-            new Spec.EngineDecision("spark_sql", "无法自动判定,默认 Spark SQL (需人工确认)");
+            new Spec.EngineDecision("spark_sql", "无法自动判定,默认 Spark SQL (需人工确认)",
+                    null, Map.of("submission_mode", "one_shot"));
+
+    private static final List<String> VALID_ENGINES = List.of(
+            "spark_sql", "flink_sql", "java_flink_streamapi");
 
     record Rule(String recommended, String reasoning, Predicate<Spec> condition) {}
 
@@ -55,9 +61,33 @@ public final class EngineSelector {
         if (spec.sources().isEmpty()) return FALLBACK;
         for (var rule : RULES) {
             if (rule.condition().test(spec)) {
-                return new Spec.EngineDecision(rule.recommended(), rule.reasoning());
+                return new Spec.EngineDecision(rule.recommended(), rule.reasoning(),
+                        null, Map.of("submission_mode", "one_shot"));
             }
         }
         return FALLBACK;
+    }
+
+    /** Select engine with optional user preference override. */
+    public static Spec.EngineDecision select(Spec spec,
+            UserPreferencesStore prefs, String userId) {
+        if (prefs != null && userId != null) {
+            var preferred = prefs.get(userId, "engine_preference", "");
+            if (!preferred.isEmpty() && VALID_ENGINES.contains(preferred)) {
+                return new Spec.EngineDecision(preferred,
+                        "用户偏好引擎: " + preferred, true, spec.engineDecision() != null
+                                ? spec.engineDecision().deployment() : null);
+            }
+        }
+        return select(spec);
+    }
+
+    /** Select engine with a direct engine name override (for testing). */
+    public static Spec.EngineDecision select(Spec spec, String directOverride) {
+        if (directOverride != null && VALID_ENGINES.contains(directOverride)) {
+            return new Spec.EngineDecision(directOverride,
+                    "用户指定引擎: " + directOverride, true, null);
+        }
+        return select(spec);
     }
 }
