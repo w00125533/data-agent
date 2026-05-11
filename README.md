@@ -147,7 +147,7 @@ mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo --n
 
 **Example:** Paste a Flink SQL pipeline, and the agent generates a Java Flink data generator with configurable NUM_ROWS and ANOMALY_RATIO.
 
-## M5 -- Multi-Turn Clarifying Conversation Convergence
+## M4.5 -- Multi-Turn Clarifying Conversation Convergence
 
 **Convergence mechanism** ensures the agent asks targeted questions one at a time and converges to codegen:
 
