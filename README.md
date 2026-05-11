@@ -146,3 +146,38 @@ mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -Dexec.args="--demo --n
 ```
 
 **Example:** Paste a Flink SQL pipeline, and the agent generates a Java Flink data generator with configurable NUM_ROWS and ANOMALY_RATIO.
+
+## M5 -- Multi-Turn Clarifying Conversation Convergence
+
+**Convergence mechanism** ensures the agent asks targeted questions one at a time and converges to codegen:
+
+| Component | Description |
+|-----------|-------------|
+| Question Model | `Spec.Question` record with answer/resolved fields, priority-based selection |
+| ClarifyTool | Picks highest-priority unanswered question (target > sources > grain > timeliness) |
+| Reply Parsing | Matches user answers against question candidates, auto-fills spec fields |
+| ConvergenceGuard | Turn limit (max 5), force-proceed keywords ("就这样"/"好的"), all-resolved check |
+| SpecState Machine | GATHERING → CLARIFYING → READY_TO_CODEGEN → CODEGEN_DONE, now wired into flow |
+
+**Usage:**
+```bash
+# Interactive mode with multi-turn convergence (default FORWARD_ETL)
+mvn exec:java -Dexec.mainClass="com.wireless.agent.Main"
+
+# Reverse synthetic with convergence
+mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -- --reverse
+```
+
+**Example conversation:**
+```
+> 做个切换失败统计
+[轮次 1/5] (clarifying) [反问] 目标数据集应该叫什么名字?
+
+> handover_failure_by_cell
+[轮次 2/5] (clarifying) [反问] 需要用到哪些数据源?
+
+> signaling_events
+[收敛] 经过 3 轮反问,规格已就绪
+[引擎] flink_sql — ...
+[代码] ...
+```
