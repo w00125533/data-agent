@@ -25,6 +25,10 @@ public class AgentCore {
     private final SandboxTool sandboxTool;
     private final DockerCommandRunner cmdRunner;
     private int turn;
+    private static final int MAX_CLARIFY_TURNS = 5;
+    private static final List<String> FORCE_PROCEED_KEYWORDS = List.of(
+            "就这样", "好的", "继续", "go ahead", "ok", "可以", "没问题", "直接生成");
+    private final ClarifyTool clarifyTool;
 
     public AgentCore(DeepSeekClient llmClient) {
         this(llmClient, Spec.TaskDirection.FORWARD_ETL,
@@ -64,6 +68,7 @@ public class AgentCore {
         this.codegenTool = new CodegenTool(llmClient);
         this.validatorTool = new ValidatorTool();
         this.sandboxTool = new SandboxTool(cmdRunner, sparkContainer, flinkContainer, baselineService);
+        this.clarifyTool = new ClarifyTool();
     }
 
     public Spec spec() { return spec; }
@@ -74,6 +79,29 @@ public class AgentCore {
 
         var intent = callLlmExtract(userMessage);
         applyIntent(intent);
+
+        // Force-proceed: user explicitly asks to continue
+        if (isForceProceed(userMessage)) {
+            spec.state(Spec.SpecState.READY_TO_CODEGEN);
+            return executeTools();
+        }
+
+        // If spec is clarifying state and hasn't converged, use ClarifyTool
+        if (!shouldConverge() && spec.state() == Spec.SpecState.CLARIFYING) {
+            var clarifyResult = clarifyTool.run(spec);
+            @SuppressWarnings("unchecked")
+            var data = (Map<String, Object>) clarifyResult.data();
+            var questionText = data != null ? data.getOrDefault("question", "").toString() : "";
+            spec.advanceState();
+            return Map.of(
+                "next_action", "ask_clarifying",
+                "clarifying_question", !questionText.isEmpty() ? questionText : "请补充更多信息",
+                "code", "",
+                "spec_summary", specSummary(),
+                "state", spec.state().value(),
+                "turn", turn
+            );
+        }
 
         var nextAction = intent.getOrDefault("next_action", "ask_clarifying").toString();
 
@@ -88,7 +116,8 @@ public class AgentCore {
                 "clarifying_question", clarifyingQuestion != null ? clarifyingQuestion.toString() : "请补充更多信息",
                 "code", "",
                 "spec_summary", specSummary(),
-                "state", spec.state().value()
+                "state", spec.state().value(),
+                "turn", turn
             );
         }
 
@@ -132,6 +161,17 @@ public class AgentCore {
 
     private Map<String, Object> mockExtract(String userMessage) {
         var msg = userMessage.toLowerCase();
+
+        // Check if user is replying to an existing open question
+        var currentQ = spec.nextQuestion();
+        if (currentQ != null && !isPastingCode(msg, userMessage)) {
+            var matched = matchAnswer(userMessage, currentQ);
+            if (matched != null) {
+                spec.markAnswered(currentQ.fieldPath(), matched);
+                applyAnswerToSpec(currentQ.fieldPath(), matched);
+            }
+        }
+
         var kpiFamily = "coverage";
         if (containsAny(msg, "切换", "handover", "mobility")) kpiFamily = "mobility";
         else if (containsAny(msg, "掉话", "drop", "retain")) kpiFamily = "retainability";
@@ -312,7 +352,56 @@ public class AgentCore {
         response.put("warnings", warnings != null ? warnings : List.of());
         response.put("preview", dryRunResult.getOrDefault("preview", ""));
         response.put("error", dryRunResult.getOrDefault("error", ""));
+        response.put("turn", turn);
         return response;
+    }
+
+    /** Determine if the spec has converged enough to proceed to codegen. */
+    private boolean shouldConverge() {
+        if (spec.unansweredQuestions().isEmpty()) return true;
+        if (spec.state() == Spec.SpecState.READY_TO_CODEGEN) return true;
+        if (turn >= MAX_CLARIFY_TURNS) return true;
+        return false;
+    }
+
+    /** Check if user message contains force-proceed keywords. */
+    private boolean isForceProceed(String userMessage) {
+        var lower = userMessage.toLowerCase();
+        return FORCE_PROCEED_KEYWORDS.stream().anyMatch(kw -> lower.contains(kw));
+    }
+
+    /** Detect if message looks like pasted SQL/code. */
+    private boolean isPastingCode(String lowerMsg, String msg) {
+        return containsAny(lowerMsg, "select", "insert", "from", "where", "group by") && msg.length() > 50;
+    }
+
+    /** Try to match user reply to one of the question's candidates. */
+    private String matchAnswer(String userMessage, Spec.Question question) {
+        if (question.candidates().isEmpty()) {
+            return userMessage.length() < 100 ? userMessage.trim() : null;
+        }
+        var lower = userMessage.toLowerCase();
+        for (var c : question.candidates()) {
+            if (lower.contains(c.toLowerCase())) return c;
+        }
+        return userMessage.length() < 50 ? userMessage.trim() : null;
+    }
+
+    /** Apply a resolved answer to the corresponding spec field. */
+    private void applyAnswerToSpec(String fieldPath, String answer) {
+        switch (fieldPath) {
+            case "target_name" -> {
+                if (spec.target() == null) spec.target(new Spec.TargetSpec());
+                spec.target().name(answer);
+            }
+            case "business_definition" -> {
+                if (spec.target() == null) spec.target(new Spec.TargetSpec());
+                spec.target().businessDefinition(answer);
+            }
+            case "time_grain" -> spec.networkContext().timeGrain(answer);
+            case "ne_grain" -> spec.networkContext().neGrain(answer);
+            case "rat" -> spec.networkContext().rat(answer);
+        }
     }
 
     public String specSummary() {
