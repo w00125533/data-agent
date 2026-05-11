@@ -181,3 +181,49 @@ mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -- --reverse
 [引擎] flink_sql — ...
 [代码] ...
 ```
+
+## M5 -- Closed-Loop Deployment
+
+**端到端闭环:** 从对话到代码、dry-run、用户确认后生成上线产物:
+
+| Component | Description |
+|-----------|-------------|
+| SchedulerTool | 生成一次性 spark-submit/flink run 提交脚本 + PR 模板 + 上线工单 |
+| UserPreferencesStore | JSON 文件持久化用户偏好(引擎选择、默认队列) |
+| TraceRecorder | 会话级事件录制:对话/Spec演进/工具调用/LLM调用/最终产物 |
+| TraceReplay | 按 session_id 加载和重放历史会话轨迹 |
+
+**Usage:**
+
+```bash
+# 交互模式 + 闭环部署 (代码生成后询问是否生成上线产物)
+mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -- --deploy
+
+# 交互模式 + 会话追踪
+mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -- --deploy --trace
+
+# Demo 模式 + 闭环部署
+mvn exec:java -Dexec.mainClass="com.wireless.agent.Main" -- --demo --no-llm --deploy
+```
+
+**生成产物示例:**
+
+```
+=== 提交脚本 ===
+#!/bin/bash
+spark-sql --master yarn --deploy-mode cluster --name "弱覆盖按区县统计" ...
+
+=== PR 模板 ===
+# Data Agent Generated: 弱覆盖按区县统计
+## 变更内容
+...
+
+=== 上线工单 ===
+# 上线工单 — 弱覆盖按区县统计
+| 字段 | 值 |
+...
+```
+
+**Trace 文件位置:** `.data-agent/traces/<session_id>.json`
+
+**UserPreferences 文件位置:** `.data-agent/prefs/<user_id>.json`
