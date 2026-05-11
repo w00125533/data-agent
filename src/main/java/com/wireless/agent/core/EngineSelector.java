@@ -75,8 +75,8 @@ public final class EngineSelector {
             var preferred = prefs.get(userId, "engine_preference", "");
             if (!preferred.isEmpty() && VALID_ENGINES.contains(preferred)) {
                 return new Spec.EngineDecision(preferred,
-                        "用户偏好引擎: " + preferred, true, spec.engineDecision() != null
-                                ? spec.engineDecision().deployment() : null);
+                        "用户偏好引擎: " + preferred, true,
+                        Map.of("submission_mode", "one_shot"));
             }
         }
         return select(spec);
@@ -86,7 +86,8 @@ public final class EngineSelector {
     public static Spec.EngineDecision select(Spec spec, String directOverride) {
         if (directOverride != null && VALID_ENGINES.contains(directOverride)) {
             return new Spec.EngineDecision(directOverride,
-                    "用户指定引擎: " + directOverride, true, null);
+                    "用户指定引擎: " + directOverride, true,
+                    Map.of("submission_mode", "one_shot"));
         }
         return select(spec);
     }
