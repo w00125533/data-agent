@@ -77,24 +77,27 @@ public class AgentCore {
 
         var nextAction = intent.getOrDefault("next_action", "ask_clarifying").toString();
 
-        if ("ask_clarifying".equals(nextAction)) {
-            return Map.of(
-                "next_action", "ask_clarifying",
-                "clarifying_question", intent.getOrDefault("clarifying_question", "请补充更多信息"),
-                "code", "",
-                "spec_summary", specSummary()
-            );
+        if ("ready_for_tools".equals(nextAction) || spec.state() == Spec.SpecState.READY_TO_CODEGEN) {
+            return executeTools();
         }
 
-        if ("ready_for_tools".equals(nextAction)) {
-            return executeTools();
+        if ("ask_clarifying".equals(nextAction) || spec.state() == Spec.SpecState.CLARIFYING) {
+            var clarifyingQuestion = intent.get("clarifying_question");
+            return Map.of(
+                "next_action", "ask_clarifying",
+                "clarifying_question", clarifyingQuestion != null ? clarifyingQuestion.toString() : "请补充更多信息",
+                "code", "",
+                "spec_summary", specSummary(),
+                "state", spec.state().value()
+            );
         }
 
         return Map.of(
             "next_action", "ask_clarifying",
             "clarifying_question", "请提供更多关于目标数据集的信息",
             "code", "",
-            "spec_summary", specSummary()
+            "spec_summary", specSummary(),
+            "state", spec.state().value()
         );
     }
 
@@ -222,6 +225,8 @@ public class AgentCore {
                 spec.addQuestion(fieldPath, question, candidates);
             }
         }
+
+        spec.advanceState();
     }
 
     private Map<String, Object> executeTools() {
