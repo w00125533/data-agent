@@ -227,3 +227,47 @@ spark-sql --master yarn --deploy-mode cluster --name "弱覆盖按区县统计" 
 **Trace 文件位置:** `.data-agent/traces/<session_id>.json`
 
 **UserPreferences 文件位置:** `.data-agent/prefs/<user_id>.json`
+
+## M6 -- Quality Baseline (E2E Eval Set)
+
+**评估体系:** 30-35 个无线评估典型任务样本作为回归基线，多维度自动评分。
+
+| Component | Description |
+|-----------|-------------|
+| EvalCase | 评估案例数据模型: NL输入 → 期望Spec → 期望代码模式 |
+| EvalRunner | 评估引擎: 加载案例 → 驱动AgentCore → 评分 |
+| EvalResult | 四维评分: Spec准确率 / 代码可编译 / Dry-run通过 / 轮次收敛 |
+| EvalReport | 聚合报告: 通过率、均分、按类别分组 |
+| Regression Gate | CI门禁: 分数跌幅 ≥ 5% 阻塞合并 |
+
+**评估类别:** coverage(5) / mobility(5) / accessibility+retainability(5) / qoe(5) / multi-source(5) / stream-batch(5) / reverse(5)
+
+**Usage:**
+
+```bash
+# 运行全部 E2E 评估集
+mvn test -P eval
+
+# 运行评估 + 回归检查
+bash scripts/eval-regression-check.sh
+
+# 查看评估报告
+cat target/eval-report/eval-report.json
+```
+
+**评分维度:**
+
+| 维度 | 权重 | 说明 |
+|------|------|------|
+| Spec准确率 | 25% | target_name/kpi_family/ne_grain/time_grain/rat/sources 匹配 |
+| 代码可编译 | 25% | 生成代码非空且含期望模式 |
+| Dry-run通过 | 25% | 沙箱执行成功 (must_dry_run=false时跳过) |
+| 轮次收敛 | 25% | turns_used / max_turns 归一化 |
+
+**回归门禁:**
+
+```bash
+# CI pipeline 中调用:
+bash scripts/eval-regression-check.sh
+# 首次运行创建baseline，后续运行对比 >=5% 跌幅则阻塞
+```
