@@ -216,6 +216,7 @@ spec:
 |---|---|---|---|---|
 | **MetadataTool** | catalog + table/topic 名 (或模糊查询关键字)；可指定优先查 Domain KB | schema + 字段注释 + 字典语义 + 责任人 + 方法论口径定义 | 只读 / 有缓存 | 表不存在 → 返回候选模糊匹配；字典未命中 → 退化到 Domain KB 兜底 |
 | **ProfilerTool** | source binding + 采样要求（列、行数上限） | 画像（cardinality、null 率、top-K、值域、分布草图） | 只读 / 有 quota | 数据量过大 → 改用统计型 SQL；优先读 Sample Baseline |
+| **ClarifyTool** | spec.openQuestions（优先级排序） | 单一最高优先级反问 + 候选选项 | 只读 / 硬编码模板兜底 | 全部已回答 → 返回 converged:true |
 | **CodegenTool** | spec（state ≥ ready_to_codegen） | 代码 + 依赖清单 + 解释 + diff（若是改写） | 内部 LLM 受模板约束；正向/反向走不同子流水线 | 模板覆盖不到 → 退化为 Java 兜底 |
 | **ValidatorTool** | 代码 + spec | {pass/fail, diagnostics, plan_warnings} | 只读 | parse 失败 → 错误反给 CodegenTool 重试 |
 | **SandboxTool** | 代码 + 小样本配置（优先指向 Sample Baseline） | result_preview + metrics + logs | 真执行 / 提交到**本地 Docker** spark-master / flink-jobmanager / 有时长限制 | 容器报错 → 错误回 agent，反思后重 codegen（同根因 N=2 后降级） |
@@ -242,10 +243,14 @@ Agent Core: init spec(forward_etl)
    │  → 字段命中率/null 率/分布
    │  写入 spec.evidence
    │
-   ├─ open_questions 计算 → 反问最高价值的一个:
+   ├─ ClarifyTool.pickNextQuestion → 按优先级(target > sources > grain > timeliness)
+   │   选最高价值反问:
    │   "弱覆盖按 RSRP < -110 占比 30%,还是按你们口径库的 v2 定义?"
    │
    ├─ ...(收敛 2-3 轮,口径/RAT/粒度对齐)...
+   │   ConvergenceGuard 控制: 轮次上限 5 / 全部回答判定 / 强制继续关键词
+   │   用户回复 → matchAnswer 候选匹配 → markAnswered → applyAnswerToSpec
+   │   SpecState: GATHERING → CLARIFYING → READY_TO_CODEGEN
    │
    ├─ EngineSelector 推荐 Spark SQL
    │  显式反问用户确认("理由: 批源、简单 join+agg、无流式窗口")
@@ -431,6 +436,7 @@ trace:
 | **M2 域知识与基线** | Domain Knowledge Base（无线评估方法论字典）+ Sample Baseline Service（基线落到 HDFS 独立路径） | agent 能正确引用方法论口径；dry-run 速度可控 |
 | **M3 引擎扩展** | 加 Flink SQL（提交到本地 docker flink-jobmanager）→ 加 Java（Flink Stream API） | 三种产物都能 codegen + 通过 dry-run |
 | **M4 反向合成** | CodegenTool 反向子流水线 + 双重 dry-run（可选） | 反向路径在 2-3 个真实样例 pipeline 上跑通 |
+| **M4.5 多轮反问收敛** | Spec.Question 模型（answer/resolved）+ ClarifyTool（优先级排序 + 硬编码反问模板）+ ConvergenceGuard（轮次上限 5 / 强制继续关键词 / 全回答判定）+ 用户回复解析（候选匹配 → Spec 字段自动填充）+ SpecState 状态机接入流程 | 模糊需求在 ≤5 轮内收敛到可代码生成状态；强制继续关键词可直接跳过反问 |
 | **M5 闭环上线** | SchedulerTool（PR + 工单 + 一次性 spark-submit / flink run 脚本）+ UserPreferencesStore + Trace/Replay | 端到端从对话到 PR + 本地一次性提交脚本闭环 |
 | **M6 质量基线** | E2E Eval Set 30-50 道 + 持续评估流水线 | 建立可回归的质量基线 |
 
