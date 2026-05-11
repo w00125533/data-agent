@@ -68,7 +68,7 @@ public class HmsMetadataTool implements Tool {
     }
 
     private ToolResult tryHmsLookup(String search) {
-        if (conf == null) return null;
+        if (conf == null || isFakeUri()) return null;
         try (var client = new HiveMetaStoreClient(conf)) {
             var parts = search.split("\\.");
             if (parts.length >= 2) {
@@ -105,6 +105,11 @@ public class HmsMetadataTool implements Tool {
             // Other unexpected exceptions — fall through to fallback
         }
         return null;
+    }
+
+    private boolean isFakeUri() {
+        String uris = conf.get("hive.metastore.uris");
+        return uris == null || uris.isEmpty() || uris.contains("nonexistent");
     }
 
     /** Direct search with keyword matching against known tables via fallback. */
